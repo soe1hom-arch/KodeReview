@@ -22,7 +22,9 @@ import com.kodereview.app.ui.screen.components.CodeEditor
 import com.kodereview.app.ui.screen.components.DiagnosticPanel
 import com.kodereview.app.ui.screen.components.PreviewPanel
 import com.kodereview.app.ui.theme.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,7 +48,9 @@ fun EditorScreen(
         if (textFieldValue.text.isNotEmpty()) {
             uiState = uiState.copy(code = textFieldValue.text, isAnalyzing = true)
             delay(500)
-            val issues = analyzerEngine.analyze(textFieldValue.text)
+            val issues = withContext(Dispatchers.Default) {
+                analyzerEngine.analyze(textFieldValue.text)
+            }
             uiState = uiState.copy(issues = issues, isAnalyzing = false)
             analysisCounter++
             showDiagnostics = true
@@ -108,7 +112,7 @@ fun EditorScreen(
 
                     if (onPickFile != null) {
                         IconButton(onClick = onPickFile) {
-                            Icon(Icons.Default.FolderOpen, "Open .kt", tint = OnSurfaceVariant)
+                            Icon(Icons.Default.Menu, "Open .kt", tint = OnSurfaceVariant)
                         }
                     }
                     IconButton(onClick = { textFieldValue = TextFieldValue(SampleCode.defaultSample) }) {
@@ -137,15 +141,15 @@ fun EditorScreen(
             ) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 },
                     text = { Text("Code", color = if (selectedTab == 0) PrimaryColor else OnSurfaceVariant) },
-                    icon = { Icon(Icons.Default.Code, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 0) PrimaryColor else OnSurfaceVariant) }
+                    icon = { Icon(Icons.Default.Edit, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 0) PrimaryColor else OnSurfaceVariant) }
                 )
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 },
                     text = { Text("Preview", color = if (selectedTab == 1) PrimaryColor else OnSurfaceVariant) },
-                    icon = { Icon(Icons.Default.PhoneAndroid, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 1) PrimaryColor else OnSurfaceVariant) }
+                    icon = { Icon(Icons.Default.Star, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 1) PrimaryColor else OnSurfaceVariant) }
                 )
                 Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 },
                     text = { Text("Split", color = if (selectedTab == 2) PrimaryColor else OnSurfaceVariant) },
-                    icon = { Icon(Icons.Default.ViewColumn, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 2) PrimaryColor else OnSurfaceVariant) }
+                    icon = { Icon(Icons.Default.List, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 2) PrimaryColor else OnSurfaceVariant) }
                 )
             }
 
