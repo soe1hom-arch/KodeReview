@@ -22,18 +22,11 @@ import com.kodereview.app.ui.theme.KodeReviewTheme
 private const val TAG = "KodeReview"
 
 class MainActivity : ComponentActivity() {
-    /**
-     * Observable state holding text from incoming VIEW intents.
-     * Composable will observe this and load new code when it changes.
-     */
     private val _pendingCode = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Check initial intent
         readIntentIfAvailable(intent)
-
         enableEdgeToEdge()
         setContent {
             KodeReviewTheme {
@@ -52,7 +45,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // onNewIntent means activity is already running, new intent arrived
         readIntentIfAvailable(intent)
     }
 
@@ -60,23 +52,22 @@ class MainActivity : ComponentActivity() {
         if (intent?.action != Intent.ACTION_VIEW || intent.data == null) return
         try {
             val uri = intent.data!!
-            val inputStream = contentResolver.openInputStream(uri)
-            val text = inputStream?.bufferedReader()?.readText()
-            inputStream?.close()
-
+            val text = readTextFromUri(uri)
             if (text != null && text.isNotBlank()) {
-                val cursor = contentResolver.query(uri, null, null, null, null)
-                val fileName = cursor?.use {
-                    val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (nameIndex >= 0 && it.moveToFirst()) it.getString(nameIndex) else null
-                } ?: "file.kt"
-                Log.d(TAG, "Intent loaded: $fileName (${text.length} chars)")
+                Log.d(TAG, "Intent loaded: ${text.length} chars")
                 _pendingCode.value = text
-            } else {
-                Log.w(TAG, "Intent returned empty text")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Intent read error", e)
+        }
+    }
+
+    private fun readTextFromUri(uri: Uri): String? {
+        return try {
+            contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        } catch (e: Exception) {
+            Log.e(TAG, "Read error: ${e.message}", e)
+            null
         }
     }
 }
@@ -87,7 +78,7 @@ fun KodeReviewApp(
     pendingCode: MutableState<String?>
 ) {
     var editorKey by remember { mutableStateOf(0) }
-    var currentCode by remember { mutableStateOf(pendingCode.value) }
+    var currentCode by remember { mutableStateOf<String?>(null) }
 
     // Observe pendingCode changes (from intents)
     LaunchedEffect(pendingCode.value) {
@@ -95,25 +86,22 @@ fun KodeReviewApp(
         if (code != null && code.isNotBlank()) {
             currentCode = code
             editorKey++
-            pendingCode.value = null  // Consume the pending code
-            Toast.makeText(activity, "File loaded (${code.length} chars)", Toast.LENGTH_SHORT).show()
+            pendingCode.value = null
+            Toast.makeText(activity, "Loaded: ${code.take(30)}... (${code.length} chars)", Toast.LENGTH_SHORT).show()
         }
     }
 
-    // File picker launcher
+    // File picker - use OpenDocument for broader file manager support
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
             try {
-                val inputStream = activity.contentResolver.openInputStream(uri)
-                val text = inputStream?.bufferedReader()?.readText()
-                inputStream?.close()
-
+                val text = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                 if (text != null && text.isNotBlank()) {
                     currentCode = text
                     editorKey++
-                    Toast.makeText(activity, "File loaded (${text.length} chars)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(activity, "Loaded: ${text.take(30)}... (${text.length} chars)", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(activity, "File is empty", Toast.LENGTH_SHORT).show()
                 }
@@ -129,11 +117,11 @@ fun KodeReviewApp(
         initialCode = currentCode,
         onPickFile = {
             try {
-                // "*/*" accepts all file types
-                filePickerLauncher.launch("*/*")
+                // Use multiple mime types for broad compatibility
+                filePickerLauncher.launch(arrayOf("*/*"))
             } catch (e: Exception) {
                 Log.e(TAG, "File picker error", e)
-                Toast.makeText(activity, "Cannot open file picker", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, "Cannot open file picker: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     )

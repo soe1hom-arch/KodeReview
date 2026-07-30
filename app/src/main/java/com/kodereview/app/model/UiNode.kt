@@ -28,7 +28,6 @@ sealed class UiNode {
         val contentAlignment: String? = null
     ) : UiNode()
 
-    // Surface
     data class Surface(
         override val modifier: ModifierModel = ModifierModel(),
         val children: List<UiNode> = emptyList(),
@@ -69,6 +68,11 @@ sealed class UiNode {
         val text: String = ""
     ) : UiNode()
 
+    data class IconButton(
+        override val modifier: ModifierModel = ModifierModel(),
+        val text: String = ""
+    ) : UiNode()
+
     data class Icon(
         override val modifier: ModifierModel = ModifierModel(),
         val name: String? = null,
@@ -103,7 +107,7 @@ sealed class UiNode {
         val color: String? = null
     ) : UiNode()
 
-    // Lazy lists (simplified)
+    // Lazy lists
     data class LazyColumn(
         override val modifier: ModifierModel = ModifierModel(),
         val items: List<UiNode> = emptyList(),
@@ -119,6 +123,59 @@ sealed class UiNode {
     data class Scaffold(
         override val modifier: ModifierModel = ModifierModel(),
         val content: UiNode? = null
+    ) : UiNode()
+
+    // Navigation components
+    data class TopAppBar(
+        override val modifier: ModifierModel = ModifierModel(),
+        val title: String = ""
+    ) : UiNode()
+
+    data class NavigationBar(
+        override val modifier: ModifierModel = ModifierModel(),
+        val children: List<UiNode> = emptyList()
+    ) : UiNode()
+
+    data class NavigationBarItem(
+        override val modifier: ModifierModel = ModifierModel(),
+        val selected: Boolean = false,
+        val label: String = ""
+    ) : UiNode()
+
+    // Input components
+    data class Switch(
+        override val modifier: ModifierModel = ModifierModel(),
+        val checked: Boolean = false
+    ) : UiNode()
+
+    data class Checkbox(
+        override val modifier: ModifierModel = ModifierModel(),
+        val checked: Boolean = false
+    ) : UiNode()
+
+    // Dialog
+    data class Dialog(
+        override val modifier: ModifierModel = ModifierModel(),
+        val title: String? = null,
+        val text: String? = null,
+        val children: List<UiNode> = emptyList()
+    ) : UiNode()
+
+    // Drawer
+    data class ModalNavigationDrawer(
+        override val modifier: ModifierModel = ModifierModel(),
+        val content: UiNode? = null
+    ) : UiNode()
+
+    data class ModalDrawerSheet(
+        override val modifier: ModifierModel = ModifierModel(),
+        val children: List<UiNode> = emptyList()
+    ) : UiNode()
+
+    // FAB
+    data class FloatingActionButton(
+        override val modifier: ModifierModel = ModifierModel(),
+        val text: String = ""
     ) : UiNode()
 
     // Placeholder for unknown composables

@@ -6,21 +6,38 @@ import kotlin.math.min
 /**
  * Recursive descent parser that extracts a Compose UI tree from Kotlin source code.
  *
- * Handles a practical subset of Compose components for live preview:
- * Column, Row, Box, Text, Button, OutlinedButton, TextButton,
- * Image, Icon, Spacer, Divider, Surface, Card,
- * CircularProgressIndicator, LinearProgressIndicator,
- * LazyColumn, LazyRow, Scaffold
+ * Handles a practical subset of Compose components for live preview.
+ * Improved to handle control flow, complex annotations, and unknown patterns gracefully.
  */
 class ComposePreviewParser(private val source: String) {
 
-    private var pos = 0
-    private var previewBlockStart = -1
-    private var previewBlockEnd = -1
-
     /**
-     * Parse all composable functions and return their UI trees.
+     * Known Compose composable function names that we can render.
      */
+    private val KNOWN_COMPOSABLES = setOf(
+        "Column", "Row", "Box", "Text", "Button", "OutlinedButton", "TextButton",
+        "Icon", "Image", "Spacer", "Divider", "Surface", "Card",
+        "CircularProgressIndicator", "LinearProgressIndicator",
+        "LazyColumn", "LazyRow", "Scaffold",
+        "TopAppBar", "CenterAlignedTopAppBar",
+        "NavigationBar", "NavigationBarItem",
+        "ModalNavigationDrawer", "ModalDrawerSheet",
+        "Switch", "Checkbox", "RadioButton", "Slider",
+        "AlertDialog", "Dialog",
+        "IconButton", "Text", "FloatingActionButton",
+        "SmallFloatingActionButton", "LargeFloatingActionButton",
+        "ExtendedFloatingActionButton",
+        "DropdownMenu", "DropdownMenuItem",
+        "Badge", "BadgedBox",
+        "BottomSheetScaffold", "BottomSheet",
+        "Tab", "TabRow",
+        "Card", "ElevatedCard", "OutlinedCard",
+        "ModalBottomSheet",
+        "SearchBar", "DockedSearchBar",
+        "PullToRefreshBox",
+        "HorizontalDivider", "VerticalDivider"
+    )
+
     fun parseAll(): List<ParsedComposable> {
         val composables = mutableListOf<ParsedComposable>()
         var searchPos = 0
@@ -34,15 +51,9 @@ class ComposePreviewParser(private val source: String) {
         return composables
     }
 
-    /**
-     * Parse the first or default composable (for preview).
-     * Prefers @Preview annotated, then falls back to first @Composable.
-     */
     fun parseForPreview(): ParsedComposable? {
         val all = parseAll()
         if (all.isEmpty()) return null
-
-        // Prefer @Preview annotated
         val preview = all.find { it.hasPreviewAnnotation }
         return preview ?: all.last()
     }
@@ -55,7 +66,9 @@ class ComposePreviewParser(private val source: String) {
         val sourceLen = source.length
 
         while (searchPos < sourceLen) {
-            // Look for @Composable or @Preview annotation
+            // Skip past import statements
+            searchPos = skipImports(searchPos)
+
             val atPos = source.indexOf('@', searchPos)
             if (atPos == -1 || atPos >= sourceLen) return null
 
@@ -77,6 +90,9 @@ class ComposePreviewParser(private val source: String) {
             val nameEnd = findIdentifierEnd(source, afterFun)
             val name = source.substring(afterFun, nameEnd)
 
+            // Check if it's actually a function (not "function" in a string)
+            if (name.isEmpty()) return null
+
             // Find opening parenthesis for parameters
             val paramStart = source.indexOf('(', afterFun)
             if (paramStart == -1) return null
@@ -88,7 +104,7 @@ class ComposePreviewParser(private val source: String) {
             // Parse parameters
             val params = parseParameters(paramStart, paramEnd)
 
-            // Find body - skip potential return type (: ReturnType)
+            // Find body
             var bodySearchStart = paramEnd + 1
             val afterParen = skipWhitespace(source, bodySearchStart)
             var bodyStart = afterParen
@@ -97,8 +113,8 @@ class ComposePreviewParser(private val source: String) {
             if (bodyStart < sourceLen && source[bodyStart] == ':') {
                 val afterColon = skipWhitespace(source, bodyStart + 1)
                 val typeEnd = findExpressionEnd(source, afterColon)
-                bodyStart = afterColon
-                bodyStart = skipWhitespace(source, typeEnd + 1)
+                bodyStart = typeEnd
+                bodyStart = skipWhitespace(source, bodyStart)
             }
 
             // Find opening brace for body
@@ -111,11 +127,10 @@ class ComposePreviewParser(private val source: String) {
                 val bodyEnd = findMatchingBrace(source, bodyStart)
                 if (bodyEnd == -1) return null
 
-                // Parse the UI tree from the body
                 val bodyContent = source.substring(bodyStart + 1, bodyEnd)
                 val nodes = parseBody(bodyContent, bodyStart + 1)
 
-                val composable = ParsedComposable(
+                return ParsedComposable(
                     name = name,
                     hasPreviewAnnotation = hasPreview,
                     parameters = params,
@@ -123,8 +138,6 @@ class ComposePreviewParser(private val source: String) {
                     bodyStart = bodyStart,
                     bodyEnd = bodyEnd + 1
                 )
-
-                return composable
             } else {
                 // Expression body: fun name() = expression
                 val eqPos = bodyStart
@@ -132,16 +145,14 @@ class ComposePreviewParser(private val source: String) {
                 val bodyContent = source.substring(eqPos + 1, exprEnd)
                 val nodes = parseBody(bodyContent, eqPos + 1)
 
-                val composable = ParsedComposable(
+                return ParsedComposable(
                     name = name,
                     hasPreviewAnnotation = hasPreview,
                     parameters = params,
                     body = nodes,
-                    bodyStart = eqPos,
-                    bodyEnd = exprEnd
+                    bodyStart = bodyStart,
+                    bodyEnd = exprEnd + 1
                 )
-
-                return composable
             }
         }
 
@@ -149,7 +160,36 @@ class ComposePreviewParser(private val source: String) {
     }
 
     /**
-     * Parse a body block into a list of UiNodes.
+     * Skip import statements at the beginning.
+     */
+    private fun skipImports(start: Int): Int {
+        var pos = start
+        while (pos < source.length) {
+            val ch = source[pos]
+            if (ch == 'i' && source.regionMatches(pos, "import ", 0, 7)) {
+                val endOfLine = source.indexOf('\n', pos)
+                pos = if (endOfLine == -1) source.length else endOfLine + 1
+            } else if (ch == 'p' && source.regionMatches(pos, "package ", 0, 8)) {
+                val endOfLine = source.indexOf('\n', pos)
+                pos = if (endOfLine == -1) source.length else endOfLine + 1
+            } else if (ch == '/' && pos + 1 < source.length && source[pos + 1] == '/') {
+                val endOfLine = source.indexOf('\n', pos)
+                pos = if (endOfLine == -1) source.length else endOfLine + 1
+            } else if (ch == '/' && pos + 1 < source.length && source[pos + 1] == '*') {
+                val endOfComment = source.indexOf("*/", pos + 2)
+                pos = if (endOfComment == -1) source.length else endOfComment + 2
+            } else if (ch == '\n' || ch == '\r' || ch == ' ' || ch == '\t') {
+                pos++
+            } else {
+                break
+            }
+        }
+        return pos
+    }
+
+    /**
+     * Parse the body of a composable function, extracting UI nodes.
+     * Handles various Kotlin constructs gracefully.
      */
     private fun parseBody(content: String, offset: Int): List<UiNode> {
         val nodes = mutableListOf<UiNode>()
@@ -161,14 +201,51 @@ class ComposePreviewParser(private val source: String) {
 
             val ch = content[p]
 
-            if (ch == '}') break  // End of current block
+            // End of current block
+            if (ch == '}') break
 
-            // Variable/state declarations: val x = ..., var x by remember { ... }
-            if ((ch == 'v' && content.regionMatches(p, "val ", 0, 4)) ||
-                (ch == 'v' && content.regionMatches(p, "var ", 0, 4)) ||
-                (ch == 'c' && content.regionMatches(p, "const ", 0, 6))
+            // Skip package / import (shouldn't be in body, but just in case)
+            if ((ch == 'i' && content.regionMatches(p, "import ", 0, 7)) ||
+                (ch == 'p' && content.regionMatches(p, "package ", 0, 8))) {
+                val eol = content.indexOf('\n', p)
+                p = if (eol == -1) content.length else eol + 1
+                continue
+            }
+
+            // Variable/state declarations
+            if ((ch == 'v' && (content.regionMatches(p, "val ", 0, 4) || content.regionMatches(p, "var ", 0, 4))) ||
+                (ch == 'c' && content.regionMatches(p, "const ", 0, 6)) ||
+                (ch == 'l' && content.regionMatches(p, "lateinit ", 0, 9))
             ) {
-                p = skipToChar(content, p, ';', '\n') ?: (p + 1)
+                // Skip to end of line - handles single-line declarations
+                val eol = content.indexOf('\n', p)
+                p = if (eol == -1) content.length else eol + 1
+                continue
+            }
+
+            // Control flow: if / when / for / while / try
+            if (isControlFlowStart(content, p)) {
+                p = skipControlFlowBlock(content, p)
+                continue
+            }
+
+            // Scope functions: .let { }, .apply { }, .run { }, .also { }, .with(...) { }
+            if (isScopeFunctionStart(content, p)) {
+                p = skipScopeFunction(content, p)
+                continue
+            }
+
+            // Return statement
+            if (ch == 'r' && content.regionMatches(p, "return", 0, 6)) {
+                val eol = content.indexOf('\n', p)
+                p = if (eol == -1) content.length else eol + 1
+                continue
+            }
+
+            // Annotation (e.g., @Composable inside a function?)
+            if (ch == '@') {
+                val eol = content.indexOf('\n', p)
+                p = if (eol == -1) content.length else eol + 1
                 continue
             }
 
@@ -178,7 +255,7 @@ class ComposePreviewParser(private val source: String) {
                 nodes.add(node.first)
                 p = node.second
             } else {
-                // Skip line
+                // Skip line to recover
                 val newLine = content.indexOf('\n', p)
                 p = if (newLine == -1) content.length else newLine + 1
             }
@@ -188,54 +265,129 @@ class ComposePreviewParser(private val source: String) {
     }
 
     /**
-     * Try to parse a composable call (Column, Text, etc.) at position p.
-     * Returns the node and new position, or null if not a composable call.
+     * Check if the code at position p is the start of a control flow construct.
+     */
+    private fun isControlFlowStart(content: String, p: Int): Boolean {
+        return (content.regionMatches(p, "if ", 0, 3) ||
+                content.regionMatches(p, "if(", 0, 3) ||
+                content.regionMatches(p, "when ", 0, 5) ||
+                content.regionMatches(p, "when(", 0, 5) ||
+                content.regionMatches(p, "for ", 0, 4) ||
+                content.regionMatches(p, "for(", 0, 4) ||
+                content.regionMatches(p, "while ", 0, 6) ||
+                content.regionMatches(p, "while(", 0, 6) ||
+                content.regionMatches(p, "try ", 0, 4) ||
+                content.regionMatches(p, "try{", 0, 4))
+    }
+
+    /**
+     * Skip a control flow block (if/when/for/while/try).
+     * Returns the new position after the block.
+     */
+    private fun skipControlFlowBlock(content: String, p: Int): Int {
+        var i = p
+        // Skip to the first '{' that starts the block body
+        while (i < content.length) {
+            when (content[i]) {
+                '{' -> {
+                    val end = findMatchingBrace(content, i)
+                    return if (end == -1) content.length else end + 1
+                }
+                ';', '\n' -> {
+                    // No brace block, single line
+                    return i + 1
+                }
+                '(' -> {
+                    // Skip parenthesized condition
+                    val close = findMatchingParen(content, i)
+                    if (close == -1) return content.length
+                    i = close + 1
+                }
+                else -> i++
+            }
+        }
+        return content.length
+    }
+
+    /**
+     * Check if at a scope function start (.let, .apply, .run, .also, .with).
+     */
+    private fun isScopeFunctionStart(content: String, p: Int): Boolean {
+        return (content.regionMatches(p, ".let", 0, 4) ||
+                content.regionMatches(p, ".apply", 0, 6) ||
+                content.regionMatches(p, ".run", 0, 4) ||
+                content.regionMatches(p, ".also", 0, 5) ||
+                content.regionMatches(p, ".with", 0, 5) ||
+                content.regionMatches(p, ".takeIf", 0, 7) ||
+                content.regionMatches(p, ".takeUnless", 0, 11))
+    }
+
+    /**
+     * Skip a scope function call.
+     */
+    private fun skipScopeFunction(content: String, p: Int): Int {
+        var i = p
+        // Find the opening brace or paren
+        while (i < content.length) {
+            when (content[i]) {
+                '{' -> {
+                    val end = findMatchingBrace(content, i)
+                    return if (end == -1) content.length else end + 1
+                }
+                '(' -> {
+                    val close = findMatchingParen(content, i)
+                    if (close == -1) return content.length
+                    i = close + 1
+                }
+                ';', '\n' -> return i + 1
+                else -> i++
+            }
+        }
+        return content.length
+    }
+
+    /**
+     * Try to parse a composable call at position p.
      */
     private fun tryParseCall(content: String, p: Int, offset: Int): Pair<UiNode, Int>? {
         var pos = p
         pos = skipWhitespaceAndComments(content, pos)
+        if (pos >= content.length) return null
 
-        // Check if we have a named reference (start of a composable call)
+        // Check for identifiers like "Modifier." - skip those
+        if (content.regionMatches(pos, "Modifier.", 0, 9)) {
+            return null
+        }
+
+        // Read identifier (composable name)
         val nameStart = pos
         val name = parseIdentifier(content, pos) ?: return null
         pos += name.length
 
         pos = skipWhitespaceAndComments(content, pos)
-
-        // It could be: Name(...), Name { }, or Name(...) { }
         if (pos >= content.length) return null
 
         val ch = content[pos]
         if (ch != '(' && ch != '{') return null
 
-        // Parse arguments: Name(args...) or Name { content }
+        // Parse arguments
         val namedArgs = mutableMapOf<String, String>()
         var hasTrailingLambda = false
         var contentBody: String? = null
 
-        // Check for a chain modifier before arguments
-        // e.g., Modifier.padding(16.dp).fillMaxWidth()
-        // This is handled inside parseNamedArgumentValue / parseModifierChain
-
         if (ch == '(') {
-            // Parse arguments
             val closeParen = findMatchingParen(content, pos)
             if (closeParen == -1) return null
 
             val argsStr = content.substring(pos + 1, closeParen)
             val args = parseArguments(argsStr)
             namedArgs.putAll(args)
-            hasTrailingLambda = false  // Lambda arguments are inside the parens
-
-            // Check if there's a contents inside named args
-            // e.g., Button(onClick = { ... })
-            // The lambda value will be in the args map as onClick = "{ ... }"
 
             pos = closeParen + 1
             pos = skipWhitespaceAndComments(content, pos)
         }
 
-        // Check for trailing lambda (the content block)
+        // Check for trailing lambda { ... }
         if (pos < content.length && content[pos] == '{') {
             val bodyStart = pos
             val bodyEnd = findMatchingBrace(content, pos)
@@ -246,97 +398,93 @@ class ComposePreviewParser(private val source: String) {
             }
         }
 
-        // Build the UiNode
-        val node = buildUiNode(name, namedArgs, contentBody, offset)
-        return Pair(node, pos)
+        // If it's a known composable, build the node
+        if (name in KNOWN_COMPOSABLES || name[0].isUpperCase()) {
+            val node = buildUiNode(name, namedArgs, contentBody, offset)
+            return Pair(node, pos)
+        }
+
+        // Unknown function, skip it
+        return null
     }
 
     /**
-     * Parse the arguments string (inside parentheses) into key-value pairs.
+     * Parse arguments string into key-value pairs.
+     * Handles strings, lambdas, expressions, and nested parens/braces.
      */
     private fun parseArguments(argsStr: String): Map<String, String> {
         val args = mutableMapOf<String, String>()
         var p = 0
+        var positionalCount = 0
 
         while (p < argsStr.length) {
             p = skipWhitespaceAndComments(argsStr, p)
             if (p >= argsStr.length) break
 
-            // Check for lambda: { ... }
-            if (argsStr[p] == '{') {
-                val end = findMatchingBrace(argsStr, p)
-                if (end != -1) {
-                    args["__lambda_${p}"] = argsStr.substring(p, end + 1)
-                    p = end + 1
-                    p = skipToCommaOrEnd(argsStr, p)
-                    continue
-                }
-            }
-
-            // Parse: name = value
-            val identifierEnd = findIdentifierEnd(argsStr, p)
-            if (identifierEnd <= p) {
-                // Not an identifier, skip to comma
-                p = skipToCommaOrEnd(argsStr, p)
-                continue
-            }
-
-            val argName = argsStr.substring(p, identifierEnd)
-            p = skipWhitespaceAndComments(argsStr, identifierEnd)
+            // Find key (identifier before '=')
+            val keyEnd = skipToChars(argsStr, p, '=', ',', ')')
+            val key = argsStr.substring(p, keyEnd).trim()
+            p = keyEnd
 
             if (p < argsStr.length && argsStr[p] == '=') {
-                p++ // skip =
+                p++ // skip '='
                 p = skipWhitespaceAndComments(argsStr, p)
-                // Parse value - find its end
-                val (value, valueEnd) = parseArgumentValue(argsStr, p)
-                args[argName] = value
-                p = valueEnd
-            } else {
-                // Positional argument (no name) - skip
-                val (_, valueEnd) = parseArgumentValue(argsStr, p)
-                p = valueEnd
+                if (p >= argsStr.length) break
+
+                val (value, newP) = parseArgumentValue(argsStr, p)
+                if (key.isNotEmpty()) {
+                    args[key] = value.trim()
+                }
+                p = newP
+            } else if (key.isNotEmpty()) {
+                // Positional argument
+                args["__pos${positionalCount}"] = key
+                positionalCount++
+                p = keyEnd
             }
 
-            p = skipToCommaOrEnd(argsStr, p)
+            // Skip comma
+            if (p < argsStr.length && argsStr[p] == ',') p++
+            else if (p < argsStr.length && argsStr[p] == ')') break
         }
 
         return args
     }
 
     /**
-     * Parse a single argument value and return it with the end position.
+     * Parse an argument value: string, number, lambda, or expression.
      */
     private fun parseArgumentValue(content: String, start: Int): Pair<String, Int> {
-        var p = start
-        p = skipWhitespaceAndComments(content, p)
+        var p = skipWhitespaceAndComments(content, start)
         if (p >= content.length) return Pair("", p)
 
         val ch = content[p]
 
         return when {
+            // String literal
             ch == '"' -> {
-                val strEnd = findStringEnd(content, p)
-                val value = if (strEnd > p) content.substring(p, strEnd) else ""
-                Pair(value, strEnd)
+                val end = findStringEnd(content, p)
+                Pair(content.substring(p, end), end)
             }
+            // Character literal
             ch == '\'' -> {
-                val end = content.indexOf('\'', p + 1)
-                if (end != -1) Pair(content.substring(p, end + 1), end + 1)
-                else Pair(content.substring(p), content.length)
+                val charEnd = if (p + 2 < content.length && content[p + 1] == '\\') p + 4 else p + 2
+                Pair(content.substring(p, charEnd.coerceAtMost(content.length)), charEnd)
             }
+            // Lambda / block
             ch == '{' -> {
                 val end = findMatchingBrace(content, p)
                 if (end != -1) Pair(content.substring(p, end + 1), end + 1)
-                else Pair("", content.length)
+                else Pair(content.substring(p), content.length)
             }
-            ch == '(' -> {
+            // Lambda argument shorthand: { it ... }
+            ch == '(' && content.regionMatches(p, "({", 0, 2) -> {
                 val end = findMatchingParen(content, p)
                 if (end != -1) Pair(content.substring(p, end + 1), end + 1)
-                else Pair("", content.length)
+                else Pair(content.substring(p), content.length)
             }
-            ch == ')' || ch == ',' || ch == '}' -> Pair("", p)
+            // Number or expression
             else -> {
-                // Read until: , ) } or whitespace
                 val end = findValueEnd(content, p)
                 Pair(content.substring(p, end), end)
             }
@@ -344,7 +492,7 @@ class ComposePreviewParser(private val source: String) {
     }
 
     /**
-     * Build a UiNode from a parsed composable call.
+     * Build a UiNode from parsed composable call data.
      */
     private fun buildUiNode(
         name: String,
@@ -381,7 +529,7 @@ class ComposePreviewParser(private val source: String) {
                 color = args["color"],
                 shape = args["shape"]
             )
-            "Card" -> UiNode.Card(
+            "Card", "ElevatedCard", "OutlinedCard" -> UiNode.Card(
                 modifier = modifier,
                 children = children
             )
@@ -400,13 +548,17 @@ class ComposePreviewParser(private val source: String) {
                 onClickAvailable = args.containsKey("onClick"),
                 enabled = args["enabled"]?.let { it != "false" } ?: true
             )
-            "OutlinedButton" -> UiNode.OutlinedButton(
+            "OutlinedButton", "FilledTonalButton" -> UiNode.OutlinedButton(
                 modifier = modifier,
                 text = buttonText
             )
             "TextButton" -> UiNode.TextButton(
                 modifier = modifier,
                 text = buttonText
+            )
+            "IconButton" -> UiNode.IconButton(
+                modifier = modifier,
+                text = text ?: ""
             )
             "Icon" -> UiNode.Icon(
                 modifier = modifier,
@@ -420,7 +572,7 @@ class ComposePreviewParser(private val source: String) {
                 contentScale = args["contentScale"]
             )
             "Spacer" -> UiNode.Spacer(modifier = modifier)
-            "Divider" -> UiNode.Divider(
+            "Divider", "HorizontalDivider" -> UiNode.Divider(
                 modifier = modifier,
                 color = args["color"],
                 thickness = parseNumber(args["thickness"])
@@ -447,34 +599,63 @@ class ComposePreviewParser(private val source: String) {
                 modifier = modifier,
                 content = children.firstOrNull()
             )
+            "TopAppBar", "CenterAlignedTopAppBar" -> UiNode.TopAppBar(
+                modifier = modifier,
+                title = extractStringArg(args, "title") ?: ""
+            )
+            "NavigationBar" -> UiNode.NavigationBar(
+                modifier = modifier,
+                children = children
+            )
+            "NavigationBarItem" -> UiNode.NavigationBarItem(
+                modifier = modifier,
+                selected = args["selected"]?.let { it.toBooleanStrictOrNull() } ?: false,
+                label = args["label"] ?: text ?: ""
+            )
+            "Switch" -> UiNode.Switch(
+                modifier = modifier,
+                checked = args["checked"]?.let { it.toBooleanStrictOrNull() } ?: false
+            )
+            "Checkbox" -> UiNode.Checkbox(
+                modifier = modifier,
+                checked = args["checked"]?.let { it.toBooleanStrictOrNull() } ?: false
+            )
+            "AlertDialog", "Dialog" -> UiNode.Dialog(
+                modifier = modifier,
+                title = extractStringArg(args, "title"),
+                text = extractStringArg(args, "text"),
+                children = children
+            )
+            "ModalNavigationDrawer" -> UiNode.ModalNavigationDrawer(
+                modifier = modifier,
+                content = children.firstOrNull()
+            )
+            "ModalDrawerSheet" -> UiNode.ModalDrawerSheet(
+                modifier = modifier,
+                children = children
+            )
+            "FloatingActionButton", "SmallFloatingActionButton",
+            "LargeFloatingActionButton", "ExtendedFloatingActionButton" -> UiNode.FloatingActionButton(
+                modifier = modifier,
+                text = text ?: name
+            )
             else -> UiNode.Unknown(
                 modifier = modifier,
                 name = name,
-                error = if (children.isNotEmpty() || text != null) null else "Unknown component"
+                error = if (children.isNotEmpty() || text != null) null else "Unknown component: $name"
             )
         }
     }
 
+    // ── Modifier Parser ──
 
-    private fun extractTextFromNodeList(children: List<UiNode>): String {
-        for (child in children) {
-            if (child is UiNode.Text) return child.text
-        }
-        return ""
-    }
-
-    /**
-     * Parse a modifier chain expression like:
-     * Modifier.fillMaxWidth().padding(16.dp).background(Color.Red)
-     */
     private fun parseModifier(modifierStr: String): ModifierModel {
         val entries = mutableListOf<ModifierEntry>()
         if (modifierStr.isBlank()) return ModifierModel(entries)
 
         var p = 0
-        // Skip "Modifier" prefix if present
         if (modifierStr.startsWith("Modifier")) {
-            p = 8  // length of "Modifier"
+            p = 8
         }
 
         while (p < modifierStr.length) {
@@ -483,17 +664,14 @@ class ComposePreviewParser(private val source: String) {
 
             p++ // skip '.'
 
-            // Read modifier name
             val nameStart = p
             val nameEnd = findIdentifierEnd(modifierStr, p)
             if (nameEnd <= nameStart) break
             val modName = modifierStr.substring(nameStart, nameEnd)
             p = nameEnd
 
-            // Parse arguments: (args...)
             p = skipWhitespaceAndComments(modifierStr, p)
             if (p >= modifierStr.length || modifierStr[p] != '(') {
-                // No arguments - might be parameterless modifier
                 when (modName) {
                     "fillMaxWidth" -> entries.add(ModifierEntry.FillMaxWidth)
                     "fillMaxHeight" -> entries.add(ModifierEntry.FillMaxHeight)
@@ -509,76 +687,36 @@ class ComposePreviewParser(private val source: String) {
 
             val args = parseArguments(argsStr)
 
-            // Map modifier name + args to ModifierEntry
             val entry = when (modName) {
                 "size" -> ModifierEntry.Size(
                     width = parseNumber(args["width"] ?: args["__pos0"]),
                     height = parseNumber(args["height"] ?: args["__pos1"])
                 )
-                "width" -> ModifierEntry.Width(
-                    value = parseNumber(args["__pos0"]) ?: NumberModel(0f)
-                )
-                "height" -> ModifierEntry.Height(
-                    value = parseNumber(args["__pos0"]) ?: NumberModel(0f)
-                )
+                "width" -> ModifierEntry.Width(value = parseNumber(args["__pos0"]) ?: NumberModel(0f))
+                "height" -> ModifierEntry.Height(value = parseNumber(args["__pos0"]) ?: NumberModel(0f))
                 "padding" -> ModifierEntry.Padding(
                     all = parseNumber(args["all"] ?: args["__pos0"]),
-                    start = parseNumber(args["start"]),
-                    end = parseNumber(args["end"]),
-                    top = parseNumber(args["top"]),
-                    bottom = parseNumber(args["bottom"]),
-                    horizontal = parseNumber(args["horizontal"]),
-                    vertical = parseNumber(args["vertical"])
+                    start = parseNumber(args["start"]), end = parseNumber(args["end"]),
+                    top = parseNumber(args["top"]), bottom = parseNumber(args["bottom"]),
+                    horizontal = parseNumber(args["horizontal"]), vertical = parseNumber(args["vertical"])
                 )
                 "fillMaxWidth" -> ModifierEntry.FillMaxWidth
                 "fillMaxHeight" -> ModifierEntry.FillMaxHeight
                 "fillMaxSize" -> ModifierEntry.FillMaxSize
-                "weight" -> ModifierEntry.Weight(
-                    weight = parseNumber(args["__pos0"])
-                )
-                "background" -> ModifierEntry.Background(
-                    color = args["color"] ?: args["__pos0"],
-                    shape = args["shape"]
-                )
-                "clip" -> ModifierEntry.Clip(
-                    shape = args["__pos0"]
-                )
-                "border" -> ModifierEntry.Border(
-                    width = parseNumber(args["width"]),
-                    color = args["color"],
-                    shape = args["shape"]
-                )
-                "clickable" -> ModifierEntry.Clickable(
-                    enabled = args["enabled"]?.let { it != "false" } ?: true
-                )
-                "defaultMinSize" -> ModifierEntry.DefaultMinSize(
-                    minWidth = parseNumber(args["minWidth"]),
-                    minHeight = parseNumber(args["minHeight"])
-                )
-                "widthIn" -> ModifierEntry.WidthIn(
-                    min = parseNumber(args["min"]),
-                    max = parseNumber(args["max"])
-                )
-                "heightIn" -> ModifierEntry.HeightIn(
-                    min = parseNumber(args["min"]),
-                    max = parseNumber(args["max"])
-                )
-                "offset" -> ModifierEntry.Offset(
-                    x = parseNumber(args["x"]),
-                    y = parseNumber(args["y"])
-                )
-                "alpha" -> ModifierEntry.Alpha(
-                    value = parseNumber(args["__pos0"]) ?: NumberModel(1f)
-                )
-                "zIndex" -> ModifierEntry.ZIndex(
-                    value = parseNumber(args["__pos0"]) ?: NumberModel(0f)
-                )
-                "rotate" -> ModifierEntry.Rotate(
-                    degrees = parseNumber(args["__pos0"]) ?: NumberModel(0f)
-                )
-                "scale" -> ModifierEntry.Scale(
-                    scale = parseNumber(args["__pos0"]) ?: NumberModel(1f)
-                )
+                "weight" -> ModifierEntry.Weight(weight = parseNumber(args["__pos0"]))
+                "background" -> ModifierEntry.Background(color = args["color"] ?: args["__pos0"], shape = args["shape"])
+                "clip" -> ModifierEntry.Clip(shape = args["__pos0"])
+                "border" -> ModifierEntry.Border(width = parseNumber(args["width"]), color = args["color"], shape = args["shape"])
+                "clickable" -> ModifierEntry.Clickable(enabled = args["enabled"]?.let { it != "false" } ?: true)
+                "defaultMinSize" -> ModifierEntry.DefaultMinSize(minWidth = parseNumber(args["minWidth"]), minHeight = parseNumber(args["minHeight"]))
+                "widthIn" -> ModifierEntry.WidthIn(min = parseNumber(args["min"]), max = parseNumber(args["max"]))
+                "heightIn" -> ModifierEntry.HeightIn(min = parseNumber(args["min"]), max = parseNumber(args["max"]))
+                "offset" -> ModifierEntry.Offset(x = parseNumber(args["x"]), y = parseNumber(args["y"]))
+                "alpha" -> ModifierEntry.Alpha(value = parseNumber(args["__pos0"]) ?: NumberModel(1f))
+                "zIndex" -> ModifierEntry.ZIndex(value = parseNumber(args["__pos0"]) ?: NumberModel(0f))
+                "rotate" -> ModifierEntry.Rotate(degrees = parseNumber(args["__pos0"]) ?: NumberModel(0f))
+                "scale" -> ModifierEntry.Scale(scale = parseNumber(args["__pos0"]) ?: NumberModel(1f))
+                "matchParentSize" -> ModifierEntry.FillMaxSize
                 else -> ModifierEntry.UnknownModifier("$modName(${args.values.joinToString(", ")})")
             }
 
@@ -588,7 +726,7 @@ class ComposePreviewParser(private val source: String) {
         return ModifierModel(entries)
     }
 
-    // ── Utility methods ──
+    // ── Utility Methods ──
 
     private fun String.takeUntilCommaOrEnd(start: Int): Pair<String, Int> {
         var i = start
@@ -612,24 +750,30 @@ class ComposePreviewParser(private val source: String) {
             when (content[i]) {
                 '(' -> depth++
                 ')' -> { if (depth == 0) return i; depth-- }
-                ',' -> { if (depth == 0) return i + 1 }
-                '{' -> { val end = findMatchingBrace(content, i); if (end == -1) return content.length; i = end }
+                ',' -> { if (depth == 0) return i }
+                '}' -> { if (depth == 0) return i }
             }
             i++
         }
-        return i
+        return content.length
     }
 
     private fun parseIdentifier(content: String, start: Int): String? {
-        if (start >= content.length) return null
-        val ch = content[start]
-        if (ch != '_' && !ch.isLetter()) return null
         val end = findIdentifierEnd(content, start)
         return if (end > start) content.substring(start, end) else null
     }
 
     private fun findIdentifierEnd(content: String, start: Int): Int {
         var i = start
+        if (i >= content.length) return start
+        // First char must be letter, underscore, or backtick
+        if (content[i] != '_' && !content[i].isLetter() && content[i] != '`') return start
+        i++
+        if (start < content.length && content[start] == '`') {
+            // Backtick-quoted identifier
+            while (i < content.length && content[i] != '`') i++
+            return if (i < content.length) i + 1 else start
+        }
         while (i < content.length && (content[i].isLetterOrDigit() || content[i] == '_')) i++
         return i
     }
@@ -638,9 +782,17 @@ class ComposePreviewParser(private val source: String) {
         var i = start + 1
         while (i < content.length) {
             when (content[i]) {
-                '\\' -> i += 2  // skip escape sequence
+                '\\' -> i += 2
                 '"' -> return i + 1
-                '\n' -> return i
+                '$' -> {
+                    // String template: ${...} or $identifier
+                    if (i + 1 < content.length && content[i + 1] == '{') {
+                        val braceEnd = findMatchingBrace(content, i + 1)
+                        i = if (braceEnd != -1) braceEnd + 1 else i + 2
+                    } else {
+                        i++
+                    }
+                }
                 else -> i++
             }
         }
@@ -653,15 +805,31 @@ class ComposePreviewParser(private val source: String) {
         while (i < content.length) {
             when (content[i]) {
                 '(' -> depth++
-                ')' -> { if (depth == 0) return i; depth-- }
+                ')' -> {
+                    if (depth == 0) return i
+                    depth--
+                }
                 ',' -> { if (depth == 0) return i }
                 '}' -> { if (depth == 0) return i }
-                ' ', '\t', '\n', '\r' -> { if (depth == 0) return i }
-                '{' -> { val end = findMatchingBrace(content, i); if (end == -1) return i; i = end }
+                ' ', '\t', '\n', '\r' -> {
+                    // Stop at whitespace if we have content before it
+                    if (i > start && depth == 0) {
+                        // Check if next non-whitespace is a valid continuation
+                        val nextNonSpace = skipWhitespace(content, i)
+                        if (nextNonSpace < content.length && 
+                            (content[nextNonSpace] == '.' || content[nextNonSpace] == '?' || content[nextNonSpace] == '!' || content[nextNonSpace] == ':')) {
+                            i = nextNonSpace // Don't break, it's a chain continuation
+                        } else {
+                            return i
+                        }
+                    } else {
+                        i++
+                    }
+                }
+                else -> i++
             }
-            i++
         }
-        return i
+        return content.length
     }
 
     private fun skipWhitespaceAndComments(content: String, start: Int): Int {
@@ -696,7 +864,6 @@ class ComposePreviewParser(private val source: String) {
         var depth = 0
         var i = start
         var inString = false
-        var inComment = false
 
         while (i < content.length) {
             val ch = content[i]
@@ -704,20 +871,31 @@ class ComposePreviewParser(private val source: String) {
             if (inString) {
                 if (ch == '\\') i += 2
                 else if (ch == '"') inString = false
+                else if (ch == '$' && i + 1 < content.length && content[i + 1] == '{') {
+                    // Skip string template ${...}
+                    val braceEnd = findMatchingBrace(content, i + 1)
+                    if (braceEnd != -1) i = braceEnd
+                }
                 i++
                 continue
             }
 
-            if (ch == '"' && !inString) {
-                inString = true
-                i++
-                continue
-            }
-
-            if (ch == open) depth++
-            else if (ch == close) {
-                depth--
-                if (depth == 0) return i
+            when {
+                ch == '"' -> inString = true
+                ch == '/' && i + 1 < content.length && content[i + 1] == '/' -> {
+                    val end = content.indexOf('\n', i)
+                    i = if (end == -1) content.length else end
+                }
+                ch == '/' && i + 1 < content.length && content[i + 1] == '*' -> {
+                    val end = content.indexOf("*/", i + 2)
+                    i = if (end == -1) content.length else end + 2
+                    continue
+                }
+                ch == open -> depth++
+                ch == close -> {
+                    depth--
+                    if (depth == 0) return i
+                }
             }
             i++
         }
@@ -779,10 +957,25 @@ class ComposePreviewParser(private val source: String) {
     private fun skipToChars(content: String, start: Int, vararg chars: Char): Int {
         var i = start
         var depth = 0
+        var inString = false
+
         while (i < content.length) {
-            when (content[i]) {
+            val ch = content[i]
+            if (inString) {
+                if (ch == '\\') i += 2
+                else if (ch == '"') inString = false
+                i++
+                continue
+            }
+            when (ch) {
+                '"' -> inString = true
                 '(' -> depth++
                 ')' -> { if (depth == 0 && ')' in chars) return i; depth-- }
+                '{' -> { 
+                    // Skip braces
+                    val end = findMatchingBrace(content, i)
+                    if (end != -1) i = end
+                }
                 ',' -> { if (depth == 0 && ',' in chars) return i }
                 in chars -> { if (depth == 0) return i }
             }
@@ -798,7 +991,6 @@ class ComposePreviewParser(private val source: String) {
 
     private fun extractStringArg(args: Map<String, String>, key: String): String? {
         val value = args[key] ?: return null
-        // Remove surrounding quotes
         val trimmed = value.trim()
         return when {
             trimmed.startsWith("\"") && trimmed.endsWith("\"") ->
@@ -807,6 +999,13 @@ class ComposePreviewParser(private val source: String) {
                 trimmed.substring(1, trimmed.length - 1)
             else -> trimmed
         }
+    }
+
+    private fun extractTextFromNodeList(children: List<UiNode>): String {
+        for (child in children) {
+            if (child is UiNode.Text) return child.text
+        }
+        return ""
     }
 }
 

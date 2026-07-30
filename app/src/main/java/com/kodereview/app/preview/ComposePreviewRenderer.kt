@@ -11,7 +11,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
@@ -22,9 +21,10 @@ import androidx.compose.ui.unit.sp
 import com.kodereview.app.model.*
 
 /**
- * Renders a parsed UiNode tree into actual Jetpack Compose UI components.
- * Uses custom progress indicators to avoid BOM version compatibility issues.
+ * Renders a parsed UiNode tree into actual Jetpack Compose UI.
+ * Uses custom progress indicators to avoid BOM version issues.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 object ComposePreviewRenderer {
 
     @Composable
@@ -50,6 +50,7 @@ object ComposePreviewRenderer {
             is UiNode.Button -> RenderButton(node)
             is UiNode.OutlinedButton -> RenderOutlinedButton(node)
             is UiNode.TextButton -> RenderTextButton(node)
+            is UiNode.IconButton -> RenderIconButton(node)
             is UiNode.Icon -> RenderIcon(node)
             is UiNode.Image -> RenderImage(node)
             is UiNode.Spacer -> RenderSpacer(node)
@@ -61,9 +62,20 @@ object ComposePreviewRenderer {
             is UiNode.LazyColumn -> RenderLazyColumn(node)
             is UiNode.LazyRow -> RenderLazyRow(node)
             is UiNode.Scaffold -> RenderScaffold(node)
+            is UiNode.TopAppBar -> RenderTopAppBarView(node)
+            is UiNode.NavigationBar -> RenderNavigationBarView(node)
+            is UiNode.NavigationBarItem -> RenderNavigationBarItemView(node)
+            is UiNode.Switch -> RenderSwitchCompat(node)
+            is UiNode.Checkbox -> RenderCheckboxCompat(node)
+            is UiNode.Dialog -> RenderDialogCompat(node)
+            is UiNode.ModalNavigationDrawer -> RenderModalDrawerCompat(node)
+            is UiNode.ModalDrawerSheet -> RenderModalDrawerSheetCompat(node)
+            is UiNode.FloatingActionButton -> RenderFloatingActionButtonView(node)
             is UiNode.Unknown -> RenderUnknown(node)
         }
     }
+
+    // ── Layout containers ──
 
     @Composable
     private fun RenderColumn(node: UiNode.Column) {
@@ -78,14 +90,12 @@ object ComposePreviewRenderer {
             node.verticalArrangement?.contains("Center") == true -> Arrangement.Center
             else -> Arrangement.Top
         }
-
         val horizontalAlignment = when {
             node.horizontalAlignment?.contains("CenterHorizontally") == true -> Alignment.CenterHorizontally
             node.horizontalAlignment?.contains("End") == true -> Alignment.End
             node.horizontalAlignment?.contains("Start") == true -> Alignment.Start
             else -> Alignment.Start
         }
-
         Column(
             modifier = buildModifier(node.modifier),
             verticalArrangement = verticalArrangement,
@@ -109,14 +119,12 @@ object ComposePreviewRenderer {
             node.horizontalArrangement?.contains("End") == true -> Arrangement.End
             else -> Arrangement.Start
         }
-
         val verticalAlignment = when {
             node.verticalAlignment?.contains("CenterVertically") == true -> Alignment.CenterVertically
             node.verticalAlignment?.contains("Top") == true -> Alignment.Top
             node.verticalAlignment?.contains("Bottom") == true -> Alignment.Bottom
             else -> Alignment.Top
         }
-
         Row(
             modifier = buildModifier(node.modifier),
             horizontalArrangement = horizontalArrangement,
@@ -140,7 +148,6 @@ object ComposePreviewRenderer {
             node.contentAlignment?.contains("CenterEnd") == true -> Alignment.CenterEnd
             else -> Alignment.TopStart
         }
-
         Box(
             modifier = buildModifier(node.modifier),
             contentAlignment = contentAlignment
@@ -148,6 +155,8 @@ object ComposePreviewRenderer {
             node.children.forEach { RenderNode(it) }
         }
     }
+
+    // ── Elements ──
 
     @Composable
     private fun RenderText(node: UiNode.Text) {
@@ -167,7 +176,6 @@ object ComposePreviewRenderer {
             node.textAlign?.contains("Start") == true -> TextAlign.Start
             else -> TextAlign.Start
         }
-
         Text(
             text = node.text,
             modifier = buildModifier(node.modifier),
@@ -206,7 +214,17 @@ object ComposePreviewRenderer {
             onClick = { },
             modifier = buildModifier(node.modifier)
         ) {
-            Text(node.text.ifEmpty { "Text Button" })
+            Text(node.text.ifEmpty { "Text" })
+        }
+    }
+
+    @Composable
+    private fun RenderIconButton(node: UiNode.IconButton) {
+        IconButton(
+            onClick = { },
+            modifier = buildModifier(node.modifier)
+        ) {
+            Text(node.text.ifEmpty { "🔘" }, fontSize = 12.sp)
         }
     }
 
@@ -219,11 +237,7 @@ object ComposePreviewRenderer {
                 .background(tint.copy(alpha = 0.1f), RoundedCornerShape(4.dp)),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "◆",
-                color = tint,
-                fontSize = 14.sp
-            )
+            Text("◆", color = tint, fontSize = 14.sp)
         }
     }
 
@@ -236,16 +250,9 @@ object ComposePreviewRenderer {
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "🖼",
-                    fontSize = 20.sp
-                )
-                if (node.contentDescription != null) {
-                    Text(
-                        text = node.contentDescription!!,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Text("🖼", fontSize = 20.sp)
+                node.contentDescription?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -267,29 +274,24 @@ object ComposePreviewRenderer {
         )
     }
 
+    // ── Custom Progress Indicators ──
+
     @Composable
     private fun RenderCustomCircularProgress(node: UiNode.CircularProgressIndicator) {
         val color = parseColor(node.color) ?: MaterialTheme.colorScheme.primary
-        val stroke = node.strokeWidth?.let { parseNumberToDp(it) } ?: 4.dp
-        // Use a simple spinning indicator to avoid BOM compatibility issues
         Box(
             modifier = buildModifier(node.modifier)
                 .size(24.dp)
                 .background(color.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "⟳",
-                color = color,
-                fontSize = 14.sp
-            )
+            Text("⟳", color = color, fontSize = 14.sp)
         }
     }
 
     @Composable
     private fun RenderCustomLinearProgress(node: UiNode.LinearProgressIndicator) {
         val color = parseColor(node.color) ?: MaterialTheme.colorScheme.primary
-        // Use a simple progress bar
         Column(modifier = buildModifier(node.modifier).heightIn(min = 4.dp)) {
             Box(
                 modifier = Modifier
@@ -309,19 +311,18 @@ object ComposePreviewRenderer {
         }
     }
 
+    // ── Surfaces & Cards ──
+
     @Composable
     private fun RenderSurface(node: UiNode.Surface) {
         val color = parseColor(node.color) ?: MaterialTheme.colorScheme.surface
         val shape = parseShape(node.shape) ?: RoundedCornerShape(0.dp)
-
         Surface(
             modifier = buildModifier(node.modifier),
             color = color,
             shape = shape
         ) {
-            Column {
-                node.children.forEach { RenderNode(it) }
-            }
+            Column { node.children.forEach { RenderNode(it) } }
         }
     }
 
@@ -329,15 +330,15 @@ object ComposePreviewRenderer {
     private fun RenderCard(node: UiNode.Card) {
         Card(
             modifier = buildModifier(node.modifier),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column(modifier = Modifier.padding(8.dp)) {
                 node.children.forEach { RenderNode(it) }
             }
         }
     }
+
+    // ── Lazy Lists ──
 
     @Composable
     private fun RenderLazyColumn(node: UiNode.LazyColumn) {
@@ -359,6 +360,8 @@ object ComposePreviewRenderer {
         }
     }
 
+    // ── Scaffold ──
+
     @Composable
     private fun RenderScaffold(node: UiNode.Scaffold) {
         androidx.compose.material3.Scaffold(
@@ -369,6 +372,162 @@ object ComposePreviewRenderer {
             }
         }
     }
+
+    // ── Navigation Components ──
+
+    @Composable
+    private fun RenderTopAppBarView(node: UiNode.TopAppBar) {
+        TopAppBar(
+            title = {
+                Text(
+                    node.title.ifEmpty { "TopAppBar" },
+                    maxLines = 1,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            modifier = buildModifier(node.modifier)
+        )
+    }
+
+    @Composable
+    private fun RenderNavigationBarView(node: UiNode.NavigationBar) {
+        NavigationBar(
+            modifier = buildModifier(node.modifier)
+        ) {
+            node.children.forEach { child ->
+                when (child) {
+                    is UiNode.NavigationBarItem -> {
+                        NavigationBarItem(
+                            selected = child.selected,
+                            onClick = { },
+                            icon = { Text("◆", fontSize = 14.sp) },
+                            label = { Text(child.label.ifEmpty { "Item" }, fontSize = 10.sp) }
+                        )
+                    }
+                    else -> RenderNode(child)
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun RenderNavigationBarItemView(node: UiNode.NavigationBarItem) {
+        NavigationBarItem(
+            selected = node.selected,
+            onClick = { },
+            icon = { Text("◆", fontSize = 14.sp) },
+            label = { Text(node.label.ifEmpty { "Item" }, fontSize = 10.sp) },
+            modifier = buildModifier(node.modifier)
+        )
+    }
+
+    // ── Input Components ──
+
+    @Composable
+    private fun RenderSwitchCompat(node: UiNode.Switch) {
+        Row(
+            modifier = buildModifier(node.modifier),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier
+                    .width(40.dp)
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+                color = if (node.checked) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .offset(
+                            x = if (node.checked) 18.dp else 2.dp,
+                            y = 2.dp
+                        )
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun RenderCheckboxCompat(node: UiNode.Checkbox) {
+        Checkbox(
+            checked = node.checked,
+            onCheckedChange = { },
+            modifier = buildModifier(node.modifier)
+        )
+    }
+
+    // ── Dialog ──
+
+    @Composable
+    private fun RenderDialogCompat(node: UiNode.Dialog) {
+        Surface(
+            modifier = buildModifier(node.modifier)
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                node.title?.let {
+                    Text(it, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Spacer(Modifier.height(8.dp))
+                }
+                node.text?.let {
+                    Text(it, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                }
+                node.children.forEach { RenderNode(it) }
+            }
+        }
+    }
+
+    // ── Drawer ──
+
+    @Composable
+    private fun RenderModalDrawerCompat(node: UiNode.ModalNavigationDrawer) {
+        Surface(
+            modifier = buildModifier(node.modifier).fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Drawer", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text("(drawer content)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                node.content?.let { RenderNode(it) }
+            }
+        }
+    }
+
+    @Composable
+    private fun RenderModalDrawerSheetCompat(node: UiNode.ModalDrawerSheet) {
+        Surface(
+            modifier = buildModifier(node.modifier).fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                node.children.forEach { RenderNode(it) }
+            }
+        }
+    }
+
+    // ── FAB ──
+
+    @Composable
+    private fun RenderFloatingActionButtonView(node: UiNode.FloatingActionButton) {
+        FloatingActionButton(
+            onClick = { },
+            modifier = buildModifier(node.modifier)
+        ) {
+            Text(node.text.ifEmpty { "+" }, fontSize = 16.sp)
+        }
+    }
+
+    // ── Unknown ──
 
     @Composable
     private fun RenderUnknown(node: UiNode.Unknown) {
@@ -393,23 +552,23 @@ object ComposePreviewRenderer {
                 is ModifierEntry.Width -> m.width(parseNumberToDp(entry.value))
                 is ModifierEntry.Height -> m.height(parseNumberToDp(entry.value))
                 is ModifierEntry.Size -> {
-                    var sizeMod = m
-                    entry.width?.let { sizeMod = sizeMod.width(parseNumberToDp(it)) }
-                    entry.height?.let { sizeMod = sizeMod.height(parseNumberToDp(it)) }
-                    sizeMod
+                    var sm = m
+                    entry.width?.let { sm = sm.width(parseNumberToDp(it)) }
+                    entry.height?.let { sm = sm.height(parseNumberToDp(it)) }
+                    sm
                 }
                 is ModifierEntry.Padding -> {
-                    var padMod = m
-                    entry.all?.let { padMod = padMod.padding(parseNumberToDp(it)) }
-                    entry.horizontal?.let { padMod = padMod.padding(horizontal = parseNumberToDp(it)) }
-                    entry.vertical?.let { padMod = padMod.padding(vertical = parseNumberToDp(it)) }
-                    entry.start?.let { padMod = padMod.padding(start = parseNumberToDp(it)) }
-                    entry.end?.let { padMod = padMod.padding(end = parseNumberToDp(it)) }
-                    entry.top?.let { padMod = padMod.padding(top = parseNumberToDp(it)) }
-                    entry.bottom?.let { padMod = padMod.padding(bottom = parseNumberToDp(it)) }
-                    padMod
+                    var pm = m
+                    entry.all?.let { pm = pm.padding(parseNumberToDp(it)) }
+                    entry.horizontal?.let { pm = pm.padding(horizontal = parseNumberToDp(it)) }
+                    entry.vertical?.let { pm = pm.padding(vertical = parseNumberToDp(it)) }
+                    entry.start?.let { pm = pm.padding(start = parseNumberToDp(it)) }
+                    entry.end?.let { pm = pm.padding(end = parseNumberToDp(it)) }
+                    entry.top?.let { pm = pm.padding(top = parseNumberToDp(it)) }
+                    entry.bottom?.let { pm = pm.padding(bottom = parseNumberToDp(it)) }
+                    pm
                 }
-                is ModifierEntry.Weight -> m  // weight is a scope function, ignored
+                is ModifierEntry.Weight -> m // weight is scope function, ignored
                 is ModifierEntry.Background -> {
                     val bgColor = parseColor(entry.color) ?: MaterialTheme.colorScheme.surfaceVariant
                     m.background(bgColor)
@@ -433,7 +592,7 @@ object ComposePreviewRenderer {
         return m
     }
 
-    // ── Helper functions ──
+    // ── Helpers ──
 
     private fun parseNumberToDp(number: NumberModel): Dp {
         return when (number.unit) {
@@ -496,12 +655,7 @@ object ComposePreviewRenderer {
                 if (argMatch != null) {
                     val parts = argMatch.groupValues[1].split(",").map { it.trim() }
                     if (parts.size == 3) {
-                        try {
-                            Color(
-                                parts[0].toFloat() / 255f,
-                                parts[1].toFloat() / 255f,
-                                parts[2].toFloat() / 255f
-                            )
+                        try { Color(parts[0].toFloat() / 255f, parts[1].toFloat() / 255f, parts[2].toFloat() / 255f)
                         } catch (e: Exception) { null }
                     } else null
                 } else null
@@ -512,8 +666,7 @@ object ComposePreviewRenderer {
 
     @Composable private fun parseShape(shapeStr: String?): Shape? {
         if (shapeStr == null) return null
-        val circleMatch = Regex("""CircleShape""").find(shapeStr)
-        if (circleMatch != null) return RoundedCornerShape(50)
+        if ("CircleShape" in shapeStr) return RoundedCornerShape(50)
         val roundedMatch = Regex("""RoundedCornerShape\((\d+(?:\.\d+)?)\s*(?:\.\w+)?\)""").find(shapeStr)
         if (roundedMatch != null) {
             val dp = roundedMatch.groupValues[1].toFloatOrNull() ?: return null

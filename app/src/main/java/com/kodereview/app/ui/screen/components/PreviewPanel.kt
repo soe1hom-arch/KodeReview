@@ -214,6 +214,12 @@ private fun countNodes(nodes: List<UiNode>): Int {
             is UiNode.Scaffold -> {
                 node.content?.let { count += countNodes(listOf(it)) }
             }
+            is UiNode.NavigationBar -> count += countNodes(node.children)
+            is UiNode.ModalDrawerSheet -> count += countNodes(node.children)
+            is UiNode.Dialog -> count += countNodes(node.children)
+            is UiNode.ModalNavigationDrawer -> {
+                node.content?.let { count += countNodes(listOf(it)) }
+            }
             else -> {}
         }
     }
