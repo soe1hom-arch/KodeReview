@@ -49,8 +49,17 @@ android {
 
     packaging {
         resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // Kotlin compiler + stdlib have duplicate builtins
+            pickFirsts += "kotlin/internal/internal.kotlin_builtins"
+            pickFirsts += "kotlin/internal/ir.kotlin_builtins"
+            pickFirsts += "kotlin/internal/coroutines.kotlin_builtins"
+            pickFirsts += "kotlin/kotlin.kotlin_builtins"
+
+            // META-INF conflicts
+            excludes += "/META-INF/AL2.0"
+            excludes += "/META-INF/LGPL2.1"
             excludes += "/META-INF/*.kotlin_module"
+            excludes += "/META-INF/INDEX.LIST"
         }
     }
 }
