@@ -54,6 +54,7 @@ android {
             pickFirsts += "kotlin/internal/ir.kotlin_builtins"
             pickFirsts += "kotlin/internal/coroutines.kotlin_builtins"
             pickFirsts += "kotlin/kotlin.kotlin_builtins"
+            pickFirsts += "kotlin/reflect/reflect.kotlin_builtins"
 
             // META-INF conflicts
             excludes += "/META-INF/AL2.0"
@@ -96,4 +97,3 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
-            pickFirsts += "kotlin/reflect/reflect.kotlin_builtins"
