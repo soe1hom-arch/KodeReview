@@ -96,3 +96,4 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+            pickFirsts += "kotlin/reflect/reflect.kotlin_builtins"
