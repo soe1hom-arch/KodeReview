@@ -13,11 +13,6 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        vectorDrawables {
-            useSupportLibrary = true
-        }
     }
 
     buildTypes {
@@ -49,15 +44,6 @@ android {
 
     packaging {
         resources {
-            pickFirsts += "kotlin/annotation/annotation.kotlin_builtins"
-            pickFirsts += "kotlin/collections/collections.kotlin_builtins"
-            pickFirsts += "kotlin/coroutines/coroutines.kotlin_builtins"
-            pickFirsts += "kotlin/internal/internal.kotlin_builtins"
-            pickFirsts += "kotlin/kotlin.kotlin_builtins"
-            pickFirsts += "kotlin/ranges/ranges.kotlin_builtins"
-            pickFirsts += "kotlin/reflect/reflect.kotlin_builtins"
-
-            // META-INF conflicts
             excludes += "/META-INF/AL2.0"
             excludes += "/META-INF/LGPL2.1"
             excludes += "/META-INF/*.kotlin_module"
@@ -67,34 +53,27 @@ android {
 }
 
 dependencies {
-    // Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2024.01.00")
     implementation(composeBom)
 
-    // Core Compose
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Activity
     implementation("androidx.activity:activity-compose:1.8.2")
-
-    // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
-
-    // Core
     implementation("androidx.core:core-ktx:1.12.0")
 
-    // Kotlin Compiler (for lexer + parser on-device)
-    implementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.9.20")
+    // Kotlin Compiler Embeddable - exclude stdlib to avoid duplicate kotlin_builtins
+    implementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.9.20") {
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+    }
 
-    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
