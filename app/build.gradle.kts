@@ -49,8 +49,13 @@ android {
 
     packaging {
         resources {
-            // Catch all kotlin builtins conflicts between compiler and stdlib
-            pickFirsts += "kotlin/**/*.kotlin_builtins"
+            pickFirsts += "kotlin/annotation/annotation.kotlin_builtins"
+            pickFirsts += "kotlin/collections/collections.kotlin_builtins"
+            pickFirsts += "kotlin/coroutines/coroutines.kotlin_builtins"
+            pickFirsts += "kotlin/internal/internal.kotlin_builtins"
+            pickFirsts += "kotlin/kotlin.kotlin_builtins"
+            pickFirsts += "kotlin/ranges/ranges.kotlin_builtins"
+            pickFirsts += "kotlin/reflect/reflect.kotlin_builtins"
 
             // META-INF conflicts
             excludes += "/META-INF/AL2.0"
