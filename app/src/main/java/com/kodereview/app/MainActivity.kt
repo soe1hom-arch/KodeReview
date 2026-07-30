@@ -60,11 +60,11 @@ fun KodeReviewApp(activity: ComponentActivity) {
                     if (nameIndex >= 0 && it.moveToFirst()) it.getString(nameIndex) else null
                 } ?: "file.kt"
 
-                Log.d(TAG, "Opened: $fileName (${text.length} chars)")
+                Log.d("KodeReview", "Opened: $fileName (${text.length} chars)")
                 SampleHolder.code = text
                 editorKey++
             } catch (e: Exception) {
-                Log.e(TAG, "File read error", e)
+                Log.e("KodeReview", "File read error", e)
             }
         }
     }
@@ -80,7 +80,7 @@ fun KodeReviewApp(activity: ComponentActivity) {
                 SampleHolder.code = text
                 editorKey++
             } catch (e: Exception) {
-                Log.e(TAG, "Intent data error", e)
+                Log.e("KodeReview", "Intent data error", e)
             }
         }
     }

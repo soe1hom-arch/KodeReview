@@ -74,7 +74,7 @@ class ComposePreviewParser(private val source: String) {
 
             // Extract function name
             val afterFun = skipWhitespace(source, funPos + 3)
-            val nameEnd = findIdentifierEnd(afterFun)
+            val nameEnd = findIdentifierEnd(source, afterFun)
             val name = source.substring(afterFun, nameEnd)
 
             // Find opening parenthesis for parameters
@@ -82,7 +82,7 @@ class ComposePreviewParser(private val source: String) {
             if (paramStart == -1) return null
 
             // Find matching closing paren
-            val paramEnd = findMatchingParen(paramStart)
+            val paramEnd = findMatchingParen(source, paramStart)
             if (paramEnd == -1) return null
 
             // Parse parameters
@@ -96,7 +96,7 @@ class ComposePreviewParser(private val source: String) {
             // Check for return type ": Type"
             if (bodyStart < sourceLen && source[bodyStart] == ':') {
                 val afterColon = skipWhitespace(source, bodyStart + 1)
-                val typeEnd = findExpressionEnd(afterColon)
+                val typeEnd = findExpressionEnd(source, afterColon)
                 bodyStart = afterColon
                 bodyStart = skipWhitespace(source, typeEnd + 1)
             }
@@ -108,7 +108,7 @@ class ComposePreviewParser(private val source: String) {
                 if (bracePos == -1) return null
 
                 bodyStart = bracePos
-                val bodyEnd = findMatchingBrace(bodyStart)
+                val bodyEnd = findMatchingBrace(source, bodyStart)
                 if (bodyEnd == -1) return null
 
                 // Parse the UI tree from the body
@@ -128,7 +128,7 @@ class ComposePreviewParser(private val source: String) {
             } else {
                 // Expression body: fun name() = expression
                 val eqPos = bodyStart
-                val exprEnd = findExpressionEnd(eqPos + 1)
+                val exprEnd = findExpressionEnd(source, eqPos + 1)
                 val bodyContent = source.substring(eqPos + 1, exprEnd)
                 val nodes = parseBody(bodyContent, eqPos + 1)
 
@@ -619,7 +619,7 @@ class ComposePreviewParser(private val source: String) {
         return if (end > start) content.substring(start, end) else null
     }
 
-    private fun findIdentifierEnd(content: String, start: Int = 0): Int {
+    private fun findIdentifierEnd(content: String, start: Int): Int {
         var i = start
         while (i < content.length && (content[i].isLetterOrDigit() || content[i] == '_')) i++
         return i

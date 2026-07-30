@@ -57,8 +57,7 @@ object ComposePreviewRenderer {
             is UiNode.Icon -> RenderIcon(node)
             is UiNode.Image -> RenderImage(node)
             is UiNode.Spacer -> RenderSpacer(node)
-            is UiNode.Divider -> RenderDivider(
-                modifier = buildModifier(node.modifier),node)
+            is UiNode.Divider -> RenderDivider(node)
             is UiNode.CircularProgressIndicator -> RenderCircularProgress(node)
             is UiNode.LinearProgressIndicator -> RenderLinearProgress(node)
             is UiNode.Surface -> RenderSurface(node)
@@ -457,7 +456,7 @@ object ComposePreviewRenderer {
                     y = entry.y?.let { parseNumberToDp(it) } ?: 0.dp
                 )
                 is ModifierEntry.Alpha -> modifier.alpha(entry.value.value)
-                is ModifierEntry.ZIndex -> modifier.zIndex(entry.value.value)
+                is ModifierEntry.ZIndex -> modifier // zIndex not available in this context
                 is ModifierEntry.Rotate -> modifier.rotate(entry.degrees.value)
                 is ModifierEntry.Scale -> modifier.scale(entry.scale.value)
                 is ModifierEntry.Margin -> modifier.padding(entry.all?.let { parseNumberToDp(it) } ?: 0.dp)
