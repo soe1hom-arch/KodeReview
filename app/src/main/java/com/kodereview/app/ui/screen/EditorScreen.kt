@@ -94,7 +94,7 @@ fun EditorScreen(
             EditorTabItem("Split", selectedTab == EditorTab.SPLIT) { selectedTab = EditorTab.SPLIT }
         }
 
-        HorizontalDivider(color = SurfaceVariant, thickness = 1.dp)
+        Divider(color = SurfaceVariant, thickness = 1.dp)
 
         // ===== Main content =====
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -129,7 +129,7 @@ fun EditorScreen(
                             },
                             modifier = Modifier.fillMaxWidth().weight(1f)
                         )
-                        HorizontalDivider(color = SurfaceVariant, thickness = 2.dp)
+                        Divider(color = SurfaceVariant, thickness = 2.dp)
                         PreviewPanel(
                             sourceCode = textFieldValue.text,
                             modifier = Modifier.fillMaxWidth().weight(0.7f)
