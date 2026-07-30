@@ -209,8 +209,8 @@ private fun countNodes(nodes: List<UiNode>): Int {
             is UiNode.Box -> count += countNodes(node.children)
             is UiNode.Surface -> count += countNodes(node.children)
             is UiNode.Card -> count += countNodes(node.children)
-            is UiNode.LazyColumn -> count += countNodes(node.children)
-            is UiNode.LazyRow -> count += countNodes(node.children)
+            is UiNode.LazyColumn -> count += countNodes(node.items)
+            is UiNode.LazyRow -> count += countNodes(node.items)
             is UiNode.Scaffold -> {
                 node.content?.let { count += countNodes(listOf(it)) }
             }

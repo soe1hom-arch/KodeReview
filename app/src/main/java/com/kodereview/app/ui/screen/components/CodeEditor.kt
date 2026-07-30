@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -83,7 +84,7 @@ fun CodeEditor(
 
                 Row(
                     modifier = Modifier
-                        .height(lineHeight)
+                        .height(22.dp)
                         .then(
                             if (dotColor != Color.Transparent) {
                                 Modifier.background(dotColor.copy(alpha = 0.08f))

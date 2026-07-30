@@ -409,7 +409,7 @@ object ComposePreviewRenderer {
                     entry.bottom?.let { padMod = padMod.padding(bottom = parseNumberToDp(it)) }
                     padMod
                 }
-                is ModifierEntry.Weight -> m.weight(entry.weight?.value ?: 1f)
+                is ModifierEntry.Weight -> m  // weight is a scope function, ignored
                 is ModifierEntry.Background -> {
                     val bgColor = parseColor(entry.color) ?: MaterialTheme.colorScheme.surfaceVariant
                     m.background(bgColor)
