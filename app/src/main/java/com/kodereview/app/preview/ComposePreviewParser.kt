@@ -104,7 +104,7 @@ class ComposePreviewParser(private val source: String) {
             // Find opening brace for body
             if (bodyStart >= sourceLen || source[bodyStart] != '=') {
                 // Normal body with braces
-                val bracePos = skipToChar(bodyStart, '{')
+                val bracePos = skipToChar(source, bodyStart, '{')
                 if (bracePos == -1) return null
 
                 bodyStart = bracePos
