@@ -397,7 +397,10 @@ object ComposePreviewRenderer {
             node.children.forEach { child ->
                 when (child) {
                     is UiNode.NavigationBarItem -> {
-                        NavigationBarItem(
+                        // Inside NavigationBar lambda, we're in RowScope
+                        // NavigationBarItem is a RowScope extension function
+                        @Suppress("UNUSED_EXPRESSION")
+                        androidx.compose.material3.NavigationBarItem(
                             selected = child.selected,
                             onClick = { },
                             icon = { Text("◆", fontSize = 14.sp) },
@@ -412,13 +415,16 @@ object ComposePreviewRenderer {
 
     @Composable
     private fun RenderNavigationBarItemView(node: UiNode.NavigationBarItem) {
-        NavigationBarItem(
-            selected = node.selected,
+        // NavigationBarItem requires RowScope - render as simple button
+        OutlinedButton(
             onClick = { },
-            icon = { Text("◆", fontSize = 14.sp) },
-            label = { Text(node.label.ifEmpty { "Item" }, fontSize = 10.sp) },
             modifier = buildModifier(node.modifier)
-        )
+        ) {
+            Text(
+                node.label.ifEmpty { "Item" },
+                fontSize = 10.sp
+            )
+        }
     }
 
     // ── Input Components ──
