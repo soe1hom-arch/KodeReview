@@ -41,7 +41,6 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun KodeReviewApp(activity: ComponentActivity) {
-    var loadedCode by remember { mutableStateOf<String?>(null) }
     var editorKey by remember { mutableStateOf(0) }
 
     // File picker for .kt files

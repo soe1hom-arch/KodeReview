@@ -1,7 +1,6 @@
 package com.kodereview.app.analyzer.rule
 
-import com.kodereview.app.analyzer.AnalysisIssue
-import com.kodereview.app.analyzer.Severity
+import com.kodereview.app.analyzer.*
 
 /**
  * Checks Modifier chain ordering best practices.
@@ -55,14 +54,14 @@ class ModifierOrderRule : Rule {
         var lastPaddingIndex = -1
         var lastSizeIndex = -1
 
-        for ((idx, modifier) in paddingModifiers.withIndex()) {
+        for ((_, modifier) in paddingModifiers.withIndex()) {
             val pos = chain.indexOf(modifier)
             if (pos != -1 && (lastPaddingIndex == -1 || pos < lastPaddingIndex)) {
                 lastPaddingIndex = pos
             }
         }
 
-        for ((idx, modifier) in sizeModifiers.withIndex()) {
+        for ((_, modifier) in sizeModifiers.withIndex()) {
             val pos = chain.indexOf(modifier)
             if (pos != -1 && (lastSizeIndex == -1 || pos < lastSizeIndex)) {
                 lastSizeIndex = pos
@@ -96,11 +95,8 @@ class ModifierOrderRule : Rule {
         if (trimmed.endsWith(".") && trimmed.contains("Modifier")) {
             val nextTrimmed = nextLine.trim()
             val hasPadding = nextTrimmed.startsWith("padding(")
-            val hasSize = nextTrimmed.startsWith("size(") || nextTrimmed.startsWith("width(") ||
-                    nextTrimmed.startsWith("height(") || nextTrimmed.startsWith("fillMax")
 
-            if (hasPadding && currentLine.let { it.contains(".size(") || it.contains(".width(") ||
-                        it.contains(".height(") || it.contains(".fillMax") }) {
+            if (hasPadding && currentLine.contains(".size(")) {
                 issues.add(
                     AnalysisIssue(
                         line = lineIndex,

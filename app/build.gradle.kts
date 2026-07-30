@@ -41,15 +41,6 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.4"
     }
-
-    packaging {
-        resources {
-            excludes += "/META-INF/AL2.0"
-            excludes += "/META-INF/LGPL2.1"
-            excludes += "/META-INF/*.kotlin_module"
-            excludes += "/META-INF/INDEX.LIST"
-        }
-    }
 }
 
 dependencies {
@@ -66,11 +57,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.core:core-ktx:1.12.0")
-
-    // Kotlin Compiler Embeddable - exclude stdlib to avoid duplicate kotlin_builtins
-    implementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.9.20") {
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
-    }
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
