@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -21,8 +22,18 @@ import com.kodereview.app.ui.theme.KodeReviewTheme
 private const val TAG = "KodeReview"
 
 class MainActivity : ComponentActivity() {
+    /**
+     * Observable state holding text from incoming VIEW intents.
+     * Composable will observe this and load new code when it changes.
+     */
+    private val _pendingCode = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Check initial intent
+        readIntentIfAvailable(intent)
+
         enableEdgeToEdge()
         setContent {
             KodeReviewTheme {
@@ -30,7 +41,10 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = EditorBackground
                 ) {
-                    KodeReviewApp(activity = this@MainActivity)
+                    KodeReviewApp(
+                        activity = this@MainActivity,
+                        pendingCode = _pendingCode
+                    )
                 }
             }
         }
@@ -38,121 +52,89 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleViewIntent(intent)
+        // onNewIntent means activity is already running, new intent arrived
+        readIntentIfAvailable(intent)
     }
 
-    private fun handleViewIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_VIEW && intent.data != null) {
-            try {
-                val uri = intent.data!!
-                val inputStream = contentResolver.openInputStream(uri)
-                val text = inputStream?.bufferedReader()?.readText() ?: ""
-                inputStream?.close()
+    private fun readIntentIfAvailable(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW || intent.data == null) return
+        try {
+            val uri = intent.data!!
+            val inputStream = contentResolver.openInputStream(uri)
+            val text = inputStream?.bufferedReader()?.readText()
+            inputStream?.close()
 
+            if (text != null && text.isNotBlank()) {
                 val cursor = contentResolver.query(uri, null, null, null, null)
                 val fileName = cursor?.use {
                     val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     if (nameIndex >= 0 && it.moveToFirst()) it.getString(nameIndex) else null
                 } ?: "file.kt"
-
-                Log.d(TAG, "Intent opened: $fileName (${text.length} chars)")
-                if (text.isNotBlank()) {
-                    SampleHolder.code = text
-                    SampleHolder.version++
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Intent data error", e)
+                Log.d(TAG, "Intent loaded: $fileName (${text.length} chars)")
+                _pendingCode.value = text
+            } else {
+                Log.w(TAG, "Intent returned empty text")
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Intent read error", e)
         }
     }
 }
 
 @Composable
-fun KodeReviewApp(activity: ComponentActivity) {
+fun KodeReviewApp(
+    activity: ComponentActivity,
+    pendingCode: MutableState<String?>
+) {
     var editorKey by remember { mutableStateOf(0) }
+    var currentCode by remember { mutableStateOf(pendingCode.value) }
 
-    // Handle initial intent
-    LaunchedEffect(Unit) {
-        val intent = activity.intent
-        if (intent?.action == Intent.ACTION_VIEW && intent.data != null) {
-            try {
-                val uri = intent.data!!
-                val inputStream = activity.contentResolver.openInputStream(uri)
-                val text = inputStream?.bufferedReader()?.readText() ?: ""
-                inputStream?.close()
-
-                val cursor = activity.contentResolver.query(uri, null, null, null, null)
-                val fileName = cursor?.use {
-                    val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (nameIndex >= 0 && it.moveToFirst()) it.getString(nameIndex) else null
-                } ?: "file.kt"
-
-                Log.d(TAG, "Initial intent opened: $fileName (${text.length} chars)")
-                if (text.isNotBlank()) {
-                    SampleHolder.code = text
-                    editorKey++
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Initial intent data error", e)
-            }
-        }
-    }
-
-    // Observe SampleHolder version changes
-    LaunchedEffect(SampleHolder.version) {
-        if (SampleHolder.code != null) {
+    // Observe pendingCode changes (from intents)
+    LaunchedEffect(pendingCode.value) {
+        val code = pendingCode.value
+        if (code != null && code.isNotBlank()) {
+            currentCode = code
             editorKey++
+            pendingCode.value = null  // Consume the pending code
+            Toast.makeText(activity, "File loaded (${code.length} chars)", Toast.LENGTH_SHORT).show()
         }
     }
 
     // File picker launcher
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
+        contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
             try {
                 val inputStream = activity.contentResolver.openInputStream(uri)
-                val text = inputStream?.bufferedReader()?.readText() ?: ""
+                val text = inputStream?.bufferedReader()?.readText()
                 inputStream?.close()
 
-                val cursor = activity.contentResolver.query(uri, null, null, null, null)
-                val fileName = cursor?.use {
-                    val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (nameIndex >= 0 && it.moveToFirst()) it.getString(nameIndex) else null
-                } ?: "file.kt"
-
-                Log.d(TAG, "File picker opened: $fileName (${text.length} chars)")
-                if (text.isNotBlank()) {
-                    SampleHolder.code = text
-                    SampleHolder.version++
+                if (text != null && text.isNotBlank()) {
+                    currentCode = text
+                    editorKey++
+                    Toast.makeText(activity, "File loaded (${text.length} chars)", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(activity, "File is empty", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "File read error", e)
+                Toast.makeText(activity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    val initialCode = SampleHolder.code
     EditorScreen(
         key = editorKey,
-        initialCode = initialCode,
+        initialCode = currentCode,
         onPickFile = {
-            // Try multiple mime types for .kt files
             try {
-                filePickerLauncher.launch(arrayOf(
-                    "text/plain",
-                    "text/x-kotlin",
-                    "text/x-java",
-                    "*/*"
-                ))
+                // "*/*" accepts all file types
+                filePickerLauncher.launch("*/*")
             } catch (e: Exception) {
-                Log.e(TAG, "File picker launch error", e)
+                Log.e(TAG, "File picker error", e)
+                Toast.makeText(activity, "Cannot open file picker", Toast.LENGTH_SHORT).show()
             }
         }
     )
-}
-
-object SampleHolder {
-    var code: String? = null
-    var version: Int = 0
 }
