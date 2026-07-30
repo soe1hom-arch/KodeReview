@@ -88,7 +88,7 @@ fun KodeReviewApp(activity: ComponentActivity) {
         key = editorKey,
         initialCode = SampleHolder.code,
         onPickFile = {
-            filePickerLauncher.launch(arrayOf("*/*"))
+            filePickerLauncher.launch(arrayOf("text/plain"))
         }
     )
 }
