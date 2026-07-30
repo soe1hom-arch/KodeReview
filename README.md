@@ -7,18 +7,18 @@ An Android app that performs **real-time code review** AND **live Compose UI pre
 ### 🔍 Live Code Review
 - **Real-time Analysis** — Type code and get instant feedback with 500ms debounce
 - **7+ Detection Rules** — Covers Compose best practices and Kotlin conventions
-- **Inline Diagnostics** — Squiggly underlines, line number indicators, full diagnostic panel
-- **Syntax Highlighting** — Powered by official Kotlin Lexer (Catppuccin Mocha theme)
+- **Inline Diagnostics** — Squiggly underlines, line number indicators with color-coded severity, full diagnostic panel
+- **Syntax Highlighting** — Custom regex-based Kotlin highlighter with Catppuccin Mocha theme
 
 ### 🎨 Live Compose Preview
-- **Parse → Render Pipeline** — Extracts UI tree from source and renders live
-- **15+ Components Supported** — Column, Row, Box, Text, Button, Image, Card, Surface, and more
-- **Modifier Support** — padding, size, fillMaxWidth, background, border, weight, clip, and more
-- **Split View** — See code and preview side-by-side
+- **Parse → Render Pipeline** — Extracts UI tree from source and renders it as live Compose UI
+- **15+ Components Supported** — Column, Row, Box, Text, Button, Card, Surface, LazyColumn, and more
+- **Modifier Support** — padding, size, fillMaxWidth, background, border, weight, clip, clickable, and more
+- **Split View** — See code and preview side-by-side simultaneously
 
 **How it works:**
 ```
-Source Code → ComposePreviewParser (recursive descent) → UiNode Tree → ComposeRenderer → Live UI
+Source Code → ComposePreviewParser (recursive descent) → UiNode Tree → ComposeRenderer → Live Compose UI
 ```
 
 ## 🔍 Detection Rules
@@ -45,27 +45,32 @@ Source Code → ComposePreviewParser (recursive descent) → UiNode Tree → Com
 ## 🛠️ Tech Stack
 
 - **Kotlin** + **Jetpack Compose** (Material 3)
-- **Kotlin Compiler Embeddable** 1.9.20 (official lexer for tokenization)
-- **Custom Recursive Descent Parser** for Compose UI extraction
+- **Custom Syntax Highlighter** — regex-based tokenization (no compiler dependency needed)
+- **Custom Recursive Descent Parser** for Compose UI tree extraction
 - Android SDK 34, Min SDK 26
+- Build with GitHub Actions CI/CD
 
 ## 📱 Usage
 
 1. **Open the app** — sample code is pre-loaded with issues to demonstrate
-2. **Code tab** — write/edit Kotlin with real-time analysis
+2. **Code tab** — write/edit Kotlin with real-time syntax highlighting and analysis
 3. **Preview tab** — see live rendered Compose UI from your code
 4. **Split tab** — code and preview side by side
-5. **Open .kt files** — tap the folder icon to browse and open Kotlin files
-6. **Tap issues** — jump directly to error lines in code
-7. **Reset** — load the sample code anytime
+5. **Open .kt files** — tap the folder icon to browse and open Kotlin files from device storage
+6. **Tap issues in gutter** — jump directly to error lines
+7. **Diagnostic panel** — scrollable bottom panel with issue details and suggestions
+8. **Reset** — load the sample code anytime with refresh button
 
-## 🚀 Build
+## 🚀 Build & Download
 
 ### GitHub Actions (recommended)
-Push to GitHub — workflow builds automatically. Download APK from Actions tab.
+Push to GitHub — workflow builds APK automatically.
+Download the latest APK from the **Actions** tab → select latest run → **KodeReview-APK** artifact.
 
-### Local build (requires Android SDK)
+### Local build
 ```bash
+git clone https://github.com/soe1hom-arch/KodeReview
+cd KodeReview
 ./gradlew assembleDebug
 # APK at: app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -74,7 +79,7 @@ Push to GitHub — workflow builds automatically. Download APK from Actions tab.
 
 ```
 ┌──────────────────────────────────────────┐
-│  UI (Compose)                            │
+│  UI (Jetpack Compose)                    │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ │
 │  │ Editor   │ │Preview   │ │Diagnostic│ │
 │  │ (Code)   │ │(Render)  │ │ Panel    │ │
@@ -84,32 +89,32 @@ Push to GitHub — workflow builds automatically. Download APK from Actions tab.
 ┌───────┴──────┐ ┌────┴──────────────┐
 │ Analyzer     │ │ Preview Parser    │
 │ Engine       │ │ (Recursive        │
-│ (KotlinLexer │ │  Descent)         │
-│  + Rules)    │ │ → UiNode Tree     │
+│ (Custom      │ │  Descent)         │
+│  Rules)      │ │ → UiNode Tree     │
 └──────────────┘ └───────────────────┘
 ```
 
-## 📦 Project Structure
+## 📁 Project Structure
 
 ```
 CodeReviewApp/
-├── .github/workflows/build.yml
+├── .github/workflows/build.yml         ← GitHub Actions CI
 ├── app/src/main/java/com/kodereview/app/
-│   ├── MainActivity.kt
+│   ├── MainActivity.kt                 ← Entry point + file picker
 │   ├── ui/
-│   │   ├── theme/           ← Catppuccin Mocha dark theme
+│   │   ├── theme/                      ← Catppuccin Mocha dark theme
 │   │   └── screen/
-│   │       ├── EditorScreen.kt        ← Tabs: Code / Preview / Split
+│   │       ├── EditorScreen.kt         ← Tabs: Code / Preview / Split
 │   │       └── components/
 │   │           ├── CodeEditor.kt       ← Syntax-highlighted editor
 │   │           ├── DiagnosticPanel.kt  ← Bottom issues panel
 │   │           └── PreviewPanel.kt     ← Live Compose preview
 │   ├── highlighter/
-│   │   └── KotlinSyntaxHighlighter.kt ← KotlinLexer-based highlighting
-│   ├── analyzer/             ← Static analysis engine + rules
+│   │   └── KotlinSyntaxHighlighter.kt  ← Regex-based highlighter
+│   ├── analyzer/                       ← Static analysis engine + rules
 │   ├── preview/
-│   │   ├── ComposePreviewParser.kt    ← Recursive descent parser
-│   │   └── ComposePreviewRenderer.kt  ← UiNode → Compose rendering
-│   └── model/                ← Data models (UiNode, Modifier, EditorState)
-└── build files (AGP, Compose, Gradle)
+│   │   ├── ComposePreviewParser.kt     ← Recursive descent parser
+│   │   └── ComposePreviewRenderer.kt   ← UiNode → Compose rendering
+│   └── model/                          ← Data models
+└── build files
 ```
