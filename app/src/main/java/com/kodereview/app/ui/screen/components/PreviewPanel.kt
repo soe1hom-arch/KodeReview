@@ -80,11 +80,7 @@ fun PreviewPanel(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = PrimaryColor,
-                            strokeWidth = 2.dp
-                        )
+                        Text("⟳", color = PrimaryColor, fontSize = MaterialTheme.typography.bodyLarge.fontSize)
                     }
                 }
                 is PreviewResult.Empty -> {

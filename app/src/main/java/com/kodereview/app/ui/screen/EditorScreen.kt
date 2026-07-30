@@ -62,11 +62,7 @@ fun EditorScreen(
                 Text("KodeReview", style = MaterialTheme.typography.titleMedium, color = OnSurface)
                 if (uiState.isAnalyzing) {
                     Spacer(Modifier.width(6.dp))
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        strokeWidth = 2.dp,
-                        color = PrimaryColor
-                    )
+                    Text("●", color = PrimaryColor, fontSize = MaterialTheme.typography.bodySmall.fontSize)
                 }
                 Spacer(Modifier.weight(1f))
                 if (onPickFile != null) {
@@ -88,14 +84,14 @@ fun EditorScreen(
             modifier = Modifier.fillMaxWidth().background(EditorBackground),
             horizontalArrangement = Arrangement.Start
         ) {
-            EditorTab("Code", selectedTab == EditorTab.CODE) { selectedTab = EditorTab.CODE }
-            EditorTab("Preview", selectedTab == EditorTab.PREVIEW) { selectedTab = EditorTab.PREVIEW }
-            EditorTab("Split", selectedTab == EditorTab.SPLIT) { selectedTab = EditorTab.SPLIT }
+            TabItem("Code", selectedTab == EditorTab.CODE) { selectedTab = EditorTab.CODE }
+            TabItem("Preview", selectedTab == EditorTab.PREVIEW) { selectedTab = EditorTab.PREVIEW }
+            TabItem("Split", selectedTab == EditorTab.SPLIT) { selectedTab = EditorTab.SPLIT }
         }
 
         Divider(color = SurfaceVariant, thickness = 1.dp)
 
-        // Content
+        // Content area
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when (selectedTab) {
                 EditorTab.CODE -> {
@@ -138,7 +134,7 @@ fun EditorScreen(
             }
         }
 
-        // Diagnostic panel
+        // Diagnostic panel at bottom
         AnimatedVisibility(
             visible = showDiagnostics && uiState.totalIssues > 0 && selectedTab != EditorTab.PREVIEW,
             enter = slideInVertically(initialOffsetY = { it }),
@@ -172,7 +168,7 @@ fun EditorScreen(
 }
 
 @Composable
-private fun EditorTab(text: String, selected: Boolean, onClick: () -> Unit) {
+private fun TabItem(text: String, selected: Boolean, onClick: () -> Unit) {
     val bgColor = if (selected) PrimaryColor.copy(alpha = 0.15f) else EditorBackground
     val textColor = if (selected) PrimaryColor else OnSurfaceVariant
 
