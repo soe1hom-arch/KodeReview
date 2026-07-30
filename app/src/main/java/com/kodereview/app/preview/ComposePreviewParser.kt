@@ -9,7 +9,20 @@ import kotlin.math.min
  * Handles a practical subset of Compose components for live preview.
  * Improved to handle control flow, complex annotations, and unknown patterns gracefully.
  */
-class ComposePreviewParser(private val source: String) {
+class ComposePreviewParser(
+    private val source: String,
+    private val isActive: () -> Boolean = { true }
+) {
+    private var parseIterations = 0
+    
+    /** Check cancellation and iteration limits. Throws CancellationException if cancelled. */
+    private fun ensureActive() {
+        if (!isActive()) throw kotlinx.coroutines.CancellationException("Parser cancelled")
+        parseIterations++
+        if (parseIterations > 200000) {
+            throw IllegalStateException("Parser exceeded maximum iteration limit (200000)")
+        }
+    }
 
     /**
      * Known Compose composable function names that we can render.
@@ -43,6 +56,7 @@ class ComposePreviewParser(private val source: String) {
         var searchPos = 0
 
         while (true) {
+            ensureActive()
             val composable = parseNextComposable(searchPos) ?: break
             composables.add(composable)
             searchPos = composable.bodyEnd
@@ -66,6 +80,7 @@ class ComposePreviewParser(private val source: String) {
         val sourceLen = source.length
 
         while (searchPos < sourceLen) {
+            ensureActive()
             // Skip past import statements
             searchPos = skipImports(searchPos)
 
@@ -196,6 +211,7 @@ class ComposePreviewParser(private val source: String) {
         var p = 0
 
         while (p < content.length) {
+            ensureActive()
             p = skipWhitespaceAndComments(content, p)
             if (p >= content.length) break
 
@@ -960,6 +976,7 @@ class ComposePreviewParser(private val source: String) {
         var inString = false
 
         while (i < content.length) {
+            ensureActive()
             val ch = content[i]
             if (inString) {
                 if (ch == '\\') i += 2

@@ -53,7 +53,10 @@ fun PreviewPanel(
         try {
             val result = withTimeoutOrNull(PARSE_TIMEOUT_MS) {
                 withContext(Dispatchers.Default) {
-                    val parser = ComposePreviewParser(sourceCode)
+                    // Pass cancellation check so parser can respond to timeout
+                    val ctx = kotlin.coroutines.coroutineContext
+                    val isActiveCheck = { ctx[kotlinx.coroutines.Job]?.isActive != false }
+                    val parser = ComposePreviewParser(sourceCode, isActiveCheck)
                     val allComposables = parser.parseAll()
                     val composable = parser.parseForPreview()
                     Pair(allComposables, composable)
