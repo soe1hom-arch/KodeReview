@@ -179,7 +179,7 @@ object ComposePreviewRenderer {
             color = color ?: MaterialTheme.colorScheme.onSurface,
             fontSize = fontSize,
             fontWeight = fontWeight,
-            maxLines = node.maxLines,
+            maxLines = node.maxLines ?: Int.MAX_VALUE,
             textAlign = textAlign
         )
     }
@@ -390,7 +390,7 @@ object ComposePreviewRenderer {
 
     @Composable
     private fun buildModifier(model: ModifierModel): Modifier {
-        var modifier = Modifier
+        var modifier: Modifier = Modifier
         for (entry in model.entries) {
             modifier = when (entry) {
                 is ModifierEntry.Size -> modifier.then(
@@ -415,9 +415,7 @@ object ComposePreviewRenderer {
                 is ModifierEntry.FillMaxWidth -> modifier.fillMaxWidth()
                 is ModifierEntry.FillMaxHeight -> modifier.fillMaxHeight()
                 is ModifierEntry.FillMaxSize -> modifier.fillMaxSize()
-                is ModifierEntry.Weight -> modifier.weight(
-                    entry.weight?.value ?: 1f
-                )
+                is ModifierEntry.Weight -> modifier // weight only works inside Row/Column scope
                 is ModifierEntry.Background -> {
                     val color = parseColor(entry.color) ?: MaterialTheme.colorScheme.surface
                     val shape = parseShape(entry.shape) ?: RoundedCornerShape(0.dp)
@@ -459,9 +457,10 @@ object ComposePreviewRenderer {
                     y = entry.y?.let { parseNumberToDp(it) } ?: 0.dp
                 )
                 is ModifierEntry.Alpha -> modifier.alpha(entry.value.value)
-                is ModifierEntry.ZIndex -> Modifier.zIndex(entry.value.value)
+                is ModifierEntry.ZIndex -> modifier.zIndex(entry.value.value)
                 is ModifierEntry.Rotate -> modifier.rotate(entry.degrees.value)
                 is ModifierEntry.Scale -> modifier.scale(entry.scale.value)
+                is ModifierEntry.Margin -> modifier.padding(entry.all?.let { parseNumberToDp(it) } ?: 0.dp)
                 is ModifierEntry.UnknownModifier -> modifier // Skip unknown
             }
         }
@@ -489,7 +488,7 @@ object ComposePreviewRenderer {
         }
     }
 
-    private fun parseColor(colorStr: String?): Color? {
+    @Composable private fun parseColor(colorStr: String?): Color? {
         if (colorStr == null) return null
 
         return when {
@@ -558,7 +557,7 @@ object ComposePreviewRenderer {
         }
     }
 
-    private fun parseShape(shapeStr: String?): Shape? {
+    @Composable private fun parseShape(shapeStr: String?): Shape? {
         if (shapeStr == null) return null
 
         val circleMatch = Regex("""CircleShape""").find(shapeStr)
@@ -573,7 +572,7 @@ object ComposePreviewRenderer {
         return null
     }
 
-    private fun extractNumber(expr: String): Dp {
+    @Composable private fun extractNumber(expr: String): Dp {
         val match = Regex("""(\d+(?:\.\d+)?)\s*(?:\.\w+)?""").find(expr)
         return match?.let { it.groupValues[1].toFloatOrNull()?.dp } ?: 0.dp
     }

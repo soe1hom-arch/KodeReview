@@ -16,6 +16,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
@@ -128,7 +130,7 @@ private fun LineNumberGutter(
             }
 
             Row(
-                modifier = Modifier.height(lineHeight)
+                modifier = Modifier.height(22.dp)
             ) {
                 // Dot indicator
                 Canvas(modifier = Modifier.size(12.dp).padding(top = 4.dp)) {
