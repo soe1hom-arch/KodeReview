@@ -26,9 +26,24 @@ import com.kodereview.app.ui.theme.KodeReviewTheme
 
 private const val TAG = "KodeReview"
 
+/**
+ * Error state holder for app-level crash recovery.
+ * Set to true via setUnhandledExceptionHandler if a crash occurs.
+ */
+object AppErrorState {
+    var lastError: String? = null
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Set thread-level exception handler for catching Java/Kotlin crashes
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e(TAG, "Uncaught exception on ${thread.name}", throwable)
+            AppErrorState.lastError = throwable.message ?: throwable.javaClass.simpleName
+        }
+
         enableEdgeToEdge()
         setContent {
             KodeReviewTheme {
@@ -36,44 +51,24 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = EditorBackground
                 ) {
-                    ErrorBoundary {
+                    // Check for uncaught errors and show fallback if needed
+                    val errorMsg = AppErrorState.lastError
+                    if (errorMsg != null) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Error: $errorMsg\n\nTap here to restart",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    } else {
                         KodeReviewApp(activity = this@MainActivity)
                     }
                 }
             }
-        }
-    }
-}
-
-/**
- * Simple error boundary composable that catches crashes and shows a fallback UI
- * instead of letting the app crash.
- */
-@Composable
-fun ErrorBoundary(
-    fallback: @Composable (Throwable) -> Unit = { error ->
-        Box(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "Something went wrong:\n${error.message ?: "Unknown error"}",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyLarge
-            )
-        }
-    },
-    content: @Composable () -> Unit
-) {
-    var error by remember { mutableStateOf<Throwable?>(null) }
-    if (error != null) {
-        fallback(error!!)
-    } else {
-        try {
-            content()
-        } catch (e: Exception) {
-            Log.e(TAG, "Composition error", e)
-            error = e
         }
     }
 }
