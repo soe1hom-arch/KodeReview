@@ -397,10 +397,9 @@ object ComposePreviewRenderer {
             node.children.forEach { child ->
                 when (child) {
                     is UiNode.NavigationBarItem -> {
-                        // Inside NavigationBar lambda, we're in RowScope
                         // NavigationBarItem is a RowScope extension function
-                        @Suppress("UNUSED_EXPRESSION")
-                        androidx.compose.material3.NavigationBarItem(
+                        // Inside NavigationBar lambda, RowScope receiver is available
+                        NavigationBarItem(
                             selected = child.selected,
                             onClick = { },
                             icon = { Text("◆", fontSize = 14.sp) },
