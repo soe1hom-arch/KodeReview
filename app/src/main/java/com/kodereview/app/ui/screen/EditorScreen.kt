@@ -39,7 +39,6 @@ fun EditorScreen(
     var showDiagnostics by remember { mutableStateOf(true) }
     var selectedTab by remember { mutableStateOf(EditorTab.CODE) }
 
-    // Run analysis when code changes (debounced)
     LaunchedEffect(textFieldValue.text) {
         if (textFieldValue.text.isNotEmpty()) {
             uiState = uiState.copy(code = textFieldValue.text, isAnalyzing = true)
@@ -49,8 +48,8 @@ fun EditorScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        // ===== Top toolbar =====
+    Column(modifier = modifier.fillMaxSize().background(EditorBackground)) {
+        // Toolbar
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = SurfaceVariant,
@@ -84,19 +83,19 @@ fun EditorScreen(
             }
         }
 
-        // ===== Tab bar =====
+        // Tabs
         Row(
             modifier = Modifier.fillMaxWidth().background(EditorBackground),
             horizontalArrangement = Arrangement.Start
         ) {
-            EditorTabItem("Code", selectedTab == EditorTab.CODE) { selectedTab = EditorTab.CODE }
-            EditorTabItem("Preview", selectedTab == EditorTab.PREVIEW) { selectedTab = EditorTab.PREVIEW }
-            EditorTabItem("Split", selectedTab == EditorTab.SPLIT) { selectedTab = EditorTab.SPLIT }
+            EditorTab("Code", selectedTab == EditorTab.CODE) { selectedTab = EditorTab.CODE }
+            EditorTab("Preview", selectedTab == EditorTab.PREVIEW) { selectedTab = EditorTab.PREVIEW }
+            EditorTab("Split", selectedTab == EditorTab.SPLIT) { selectedTab = EditorTab.SPLIT }
         }
 
         Divider(color = SurfaceVariant, thickness = 1.dp)
 
-        // ===== Main content =====
+        // Content
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when (selectedTab) {
                 EditorTab.CODE -> {
@@ -139,7 +138,7 @@ fun EditorScreen(
             }
         }
 
-        // ===== Bottom diagnostic panel =====
+        // Diagnostic panel
         AnimatedVisibility(
             visible = showDiagnostics && uiState.totalIssues > 0 && selectedTab != EditorTab.PREVIEW,
             enter = slideInVertically(initialOffsetY = { it }),
@@ -173,7 +172,7 @@ fun EditorScreen(
 }
 
 @Composable
-private fun EditorTabItem(text: String, selected: Boolean, onClick: () -> Unit) {
+private fun EditorTab(text: String, selected: Boolean, onClick: () -> Unit) {
     val bgColor = if (selected) PrimaryColor.copy(alpha = 0.15f) else EditorBackground
     val textColor = if (selected) PrimaryColor else OnSurfaceVariant
 
@@ -185,10 +184,6 @@ private fun EditorTabItem(text: String, selected: Boolean, onClick: () -> Unit) 
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            color = textColor
-        )
+        Text(text = text, style = MaterialTheme.typography.labelMedium, color = textColor)
     }
 }
