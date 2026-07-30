@@ -49,12 +49,8 @@ android {
 
     packaging {
         resources {
-            // Kotlin compiler + stdlib have duplicate builtins
-            pickFirsts += "kotlin/internal/internal.kotlin_builtins"
-            pickFirsts += "kotlin/internal/ir.kotlin_builtins"
-            pickFirsts += "kotlin/internal/coroutines.kotlin_builtins"
-            pickFirsts += "kotlin/kotlin.kotlin_builtins"
-            pickFirsts += "kotlin/reflect/reflect.kotlin_builtins"
+            // Catch all kotlin builtins conflicts between compiler and stdlib
+            pickFirsts += "kotlin/**/*.kotlin_builtins"
 
             // META-INF conflicts
             excludes += "/META-INF/AL2.0"
