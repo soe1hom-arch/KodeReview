@@ -1,6 +1,8 @@
 package com.kodereview.app.ui.screen
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -22,7 +24,6 @@ import kotlinx.coroutines.delay
 
 private enum class EditorTab { CODE, PREVIEW, SPLIT }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(
     key: Int = 0,
@@ -31,185 +32,74 @@ fun EditorScreen(
     modifier: Modifier = Modifier
 ) {
     val analyzerEngine = remember { AnalyzerEngine() }
-
-    // Use the initial code if provided (from file picker), otherwise use sample
     val defaultCode = initialCode ?: SampleCode.defaultSample
+
     var textFieldValue by remember(key) { mutableStateOf(TextFieldValue(defaultCode)) }
     var uiState by remember(key) { mutableStateOf(EditorUiState(code = defaultCode)) }
     var showDiagnostics by remember { mutableStateOf(true) }
-    var selectedTab by remember { mutableStateOf(EditorTab.SPLIT) }
+    var selectedTab by remember { mutableStateOf(EditorTab.CODE) }
 
-    // Run analysis when code changes
+    // Run analysis when code changes (debounced)
     LaunchedEffect(textFieldValue.text) {
-        uiState = uiState.copy(code = textFieldValue.text, isAnalyzing = true)
-        delay(500)
-        val issues = analyzerEngine.analyze(textFieldValue.text)
-        uiState = uiState.copy(issues = issues, isAnalyzing = false)
+        if (textFieldValue.text.isNotEmpty()) {
+            uiState = uiState.copy(code = textFieldValue.text, isAnalyzing = true)
+            delay(500)
+            val issues = analyzerEngine.analyze(textFieldValue.text)
+            uiState = uiState.copy(issues = issues, isAnalyzing = false)
+        }
     }
 
-    Scaffold(
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "KodeReview",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            if (uiState.isAnalyzing) {
-                                Spacer(Modifier.width(8.dp))
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    strokeWidth = 2.dp,
-                                    color = PrimaryColor
-                                )
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = SurfaceVariant,
-                        titleContentColor = OnSurface
-                    ),
-                    actions = {
-                        if (onPickFile != null) {
-                            IconButton(onClick = onPickFile) {
-                                Icon(
-                                    Icons.Default.FolderOpen,
-                                    contentDescription = "Open .kt file",
-                                    tint = OnSurfaceVariant
-                                )
-                            }
-                        }
-                        IconButton(onClick = {
-                            textFieldValue = TextFieldValue(SampleCode.defaultSample)
-                        }) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "Reset sample",
-                                tint = OnSurfaceVariant
-                            )
-                        }
-                        IconButton(onClick = {
-                            textFieldValue = TextFieldValue("")
-                        }) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Clear",
-                                tint = OnSurfaceVariant
-                            )
-                        }
-                    }
-                )
-
-                // Tab: Code | Preview | Split
-                TabRow(
-                    selectedTabIndex = selectedTab.ordinal,
-                    containerColor = EditorBackground,
-                    contentColor = PrimaryColor,
-                    divider = { Divider(color = SurfaceVariant) }
-                ) {
-                    Tab(
-                        selected = selectedTab == EditorTab.CODE,
-                        onClick = { selectedTab = EditorTab.CODE },
-                        text = { Text("Code", style = MaterialTheme.typography.labelMedium) },
-                        icon = {
-                            Icon(
-                                Icons.Default.Code,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    )
-                    Tab(
-                        selected = selectedTab == EditorTab.PREVIEW,
-                        onClick = { selectedTab = EditorTab.PREVIEW },
-                        text = { Text("Preview", style = MaterialTheme.typography.labelMedium) },
-                        icon = {
-                            Icon(
-                                Icons.Default.PhoneAndroid,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    )
-                    Tab(
-                        selected = selectedTab == EditorTab.SPLIT,
-                        onClick = { selectedTab = EditorTab.SPLIT },
-                        text = { Text("Split", style = MaterialTheme.typography.labelMedium) },
-                        icon = {
-                            Icon(
-                                Icons.Default.ViewColumn,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
+    Column(modifier = modifier.fillMaxSize()) {
+        // ===== Top toolbar =====
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = SurfaceVariant,
+            tonalElevation = 2.dp
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("KodeReview", style = MaterialTheme.typography.titleMedium, color = OnSurface)
+                if (uiState.isAnalyzing) {
+                    Spacer(Modifier.width(6.dp))
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = PrimaryColor
                     )
                 }
+                Spacer(Modifier.weight(1f))
+                if (onPickFile != null) {
+                    IconButton(onClick = onPickFile, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.FolderOpen, "Open .kt", tint = OnSurfaceVariant, modifier = Modifier.size(20.dp))
+                    }
+                }
+                IconButton(onClick = { textFieldValue = TextFieldValue(SampleCode.defaultSample) }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Refresh, "Reset", tint = OnSurfaceVariant, modifier = Modifier.size(20.dp))
+                }
+                IconButton(onClick = { textFieldValue = TextFieldValue("") }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Delete, "Clear", tint = OnSurfaceVariant, modifier = Modifier.size(20.dp))
+                }
             }
-        },
-        bottomBar = {
-            AnimatedVisibility(
-                visible = showDiagnostics && uiState.totalIssues > 0 && selectedTab != EditorTab.PREVIEW,
-                enter = slideInVertically(initialOffsetY = { it }),
-                exit = slideOutVertically(targetOffsetY = { it })
-            ) {
-                DiagnosticPanel(
-                    issues = uiState.issues,
-                    totalIssues = uiState.totalIssues,
-                    errorCount = uiState.errorCount,
-                    warningCount = uiState.warningCount,
-                    infoCount = uiState.infoCount,
-                    selectedIssue = uiState.selectedIssue,
-                    onIssueClick = { issue ->
-                        uiState = uiState.copy(selectedIssue = issue)
-                        val lines = textFieldValue.text.lines()
-                        var cursorPos = 0
-                        for (i in 0 until issue.line.coerceIn(0, lines.size - 1)) {
-                            cursorPos += lines[i].length + 1
-                        }
-                        cursorPos += issue.column
-                        textFieldValue = textFieldValue.copy(
-                            selection = TextRange(cursorPos, cursorPos)
-                        )
-                        selectedTab = EditorTab.CODE
-                    },
-                    onDismiss = { showDiagnostics = false },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        modifier = modifier
-    ) { paddingValues ->
-        when (selectedTab) {
-            EditorTab.CODE -> {
-                CodeEditor(
-                    textFieldValue = textFieldValue,
-                    onValueChange = { textFieldValue = it },
-                    issues = uiState.issues,
-                    onIssueClick = { issue ->
-                        uiState = uiState.copy(selectedIssue = issue)
-                        showDiagnostics = true
-                    },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                )
-            }
-            EditorTab.PREVIEW -> {
-                PreviewPanel(
-                    sourceCode = textFieldValue.text,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                )
-            }
-            EditorTab.SPLIT -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                ) {
+        }
+
+        // ===== Tab bar =====
+        Row(
+            modifier = Modifier.fillMaxWidth().background(EditorBackground),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            EditorTabItem("Code", selectedTab == EditorTab.CODE) { selectedTab = EditorTab.CODE }
+            EditorTabItem("Preview", selectedTab == EditorTab.PREVIEW) { selectedTab = EditorTab.PREVIEW }
+            EditorTabItem("Split", selectedTab == EditorTab.SPLIT) { selectedTab = EditorTab.SPLIT }
+        }
+
+        HorizontalDivider(color = SurfaceVariant, thickness = 1.dp)
+
+        // ===== Main content =====
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            when (selectedTab) {
+                EditorTab.CODE -> {
                     CodeEditor(
                         textFieldValue = textFieldValue,
                         onValueChange = { textFieldValue = it },
@@ -218,24 +108,87 @@ fun EditorScreen(
                             uiState = uiState.copy(selectedIssue = issue)
                             showDiagnostics = true
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
+                        modifier = Modifier.fillMaxSize()
                     )
-
-                    Divider(
-                        color = SurfaceVariant,
-                        thickness = 2.dp
-                    )
-
+                }
+                EditorTab.PREVIEW -> {
                     PreviewPanel(
                         sourceCode = textFieldValue.text,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(0.7f)
+                        modifier = Modifier.fillMaxSize()
                     )
+                }
+                EditorTab.SPLIT -> {
+                    Column(Modifier.fillMaxSize().background(EditorBackground)) {
+                        CodeEditor(
+                            textFieldValue = textFieldValue,
+                            onValueChange = { textFieldValue = it },
+                            issues = uiState.issues,
+                            onIssueClick = { issue ->
+                                uiState = uiState.copy(selectedIssue = issue)
+                                showDiagnostics = true
+                            },
+                            modifier = Modifier.fillMaxWidth().weight(1f)
+                        )
+                        HorizontalDivider(color = SurfaceVariant, thickness = 2.dp)
+                        PreviewPanel(
+                            sourceCode = textFieldValue.text,
+                            modifier = Modifier.fillMaxWidth().weight(0.7f)
+                        )
+                    }
                 }
             }
         }
+
+        // ===== Bottom diagnostic panel =====
+        AnimatedVisibility(
+            visible = showDiagnostics && uiState.totalIssues > 0 && selectedTab != EditorTab.PREVIEW,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it })
+        ) {
+            DiagnosticPanel(
+                issues = uiState.issues,
+                totalIssues = uiState.totalIssues,
+                errorCount = uiState.errorCount,
+                warningCount = uiState.warningCount,
+                infoCount = uiState.infoCount,
+                selectedIssue = uiState.selectedIssue,
+                onIssueClick = { issue ->
+                    uiState = uiState.copy(selectedIssue = issue)
+                    if (textFieldValue.text.isNotEmpty()) {
+                        val lines = textFieldValue.text.lines()
+                        var cursorPos = 0
+                        for (i in 0 until issue.line.coerceIn(0, lines.size - 1)) {
+                            cursorPos += lines[i].length + 1
+                        }
+                        cursorPos += issue.column
+                        textFieldValue = textFieldValue.copy(selection = TextRange(cursorPos))
+                    }
+                    selectedTab = EditorTab.CODE
+                },
+                onDismiss = { showDiagnostics = false },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditorTabItem(text: String, selected: Boolean, onClick: () -> Unit) {
+    val bgColor = if (selected) PrimaryColor.copy(alpha = 0.15f) else EditorBackground
+    val textColor = if (selected) PrimaryColor else OnSurfaceVariant
+
+    Box(
+        modifier = Modifier
+            .height(40.dp)
+            .background(bgColor)
+            .clickable { onClick() }
+            .padding(horizontal = 24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = textColor
+        )
     }
 }
