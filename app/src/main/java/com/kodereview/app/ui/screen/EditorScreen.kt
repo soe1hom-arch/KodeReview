@@ -112,7 +112,7 @@ fun EditorScreen(
 
                     if (onPickFile != null) {
                         IconButton(onClick = onPickFile) {
-                            Icon(Icons.Default.Menu, "Open .kt", tint = OnSurfaceVariant)
+                            Icon(Icons.Default.FolderOpen, "Open .kt", tint = OnSurfaceVariant)
                         }
                     }
                     IconButton(onClick = { textFieldValue = TextFieldValue(SampleCode.defaultSample) }) {
@@ -141,15 +141,15 @@ fun EditorScreen(
             ) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 },
                     text = { Text("Code", color = if (selectedTab == 0) PrimaryColor else OnSurfaceVariant) },
-                    icon = { Icon(Icons.Default.Edit, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 0) PrimaryColor else OnSurfaceVariant) }
+                    icon = { Icon(Icons.Default.Code, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 0) PrimaryColor else OnSurfaceVariant) }
                 )
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 },
                     text = { Text("Preview", color = if (selectedTab == 1) PrimaryColor else OnSurfaceVariant) },
-                    icon = { Icon(Icons.Default.Star, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 1) PrimaryColor else OnSurfaceVariant) }
+                    icon = { Icon(Icons.Default.PhoneAndroid, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 1) PrimaryColor else OnSurfaceVariant) }
                 )
                 Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 },
                     text = { Text("Split", color = if (selectedTab == 2) PrimaryColor else OnSurfaceVariant) },
-                    icon = { Icon(Icons.Default.List, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 2) PrimaryColor else OnSurfaceVariant) }
+                    icon = { Icon(Icons.Default.ViewColumn, null, modifier = Modifier.size(18.dp), tint = if (selectedTab == 2) PrimaryColor else OnSurfaceVariant) }
                 )
             }
 

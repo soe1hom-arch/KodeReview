@@ -215,7 +215,7 @@ private fun PreviewHeader(result: PreviewResult) {
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Default.Star, "Preview", tint = PrimaryColor, modifier = Modifier.size(16.dp))
+        Icon(Icons.Default.PhoneAndroid, "Preview", tint = PrimaryColor, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
         Text("Live Preview", style = MaterialTheme.typography.labelMedium, color = OnSurface, fontWeight = FontWeight.Bold)
         name?.let { Text(" · $it()", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant) }

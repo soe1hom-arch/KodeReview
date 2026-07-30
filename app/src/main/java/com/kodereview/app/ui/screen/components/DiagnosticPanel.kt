@@ -96,7 +96,7 @@ private fun DiagnosticSummaryBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = if (errorCount > 0) Icons.Default.Warning else Icons.Default.Info,
+            imageVector = if (errorCount > 0) Icons.Default.BugReport else Icons.Default.Info,
             contentDescription = "Issues",
             tint = if (errorCount > 0) ErrorColor else OnSurface,
             modifier = Modifier.size(18.dp)
@@ -179,7 +179,7 @@ private fun IssueItem(
     onClick: () -> Unit
 ) {
     val (icon, color) = when (issue.severity) {
-        Severity.ERROR -> Icons.Default.Clear to ErrorColor
+        Severity.ERROR -> Icons.Default.Cancel to ErrorColor
         Severity.WARNING -> Icons.Default.Warning to WarningColor
         Severity.INFO, Severity.SUGGESTION -> Icons.Default.Info to InfoColor
     }
