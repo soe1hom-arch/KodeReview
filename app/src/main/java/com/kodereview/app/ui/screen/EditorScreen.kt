@@ -139,7 +139,7 @@ fun EditorScreen(
                         text = { Text("Split", style = MaterialTheme.typography.labelMedium) },
                         icon = {
                             Icon(
-                                Icons.Default.Window,
+                                Icons.Default.ViewColumn,
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp)
                             )
