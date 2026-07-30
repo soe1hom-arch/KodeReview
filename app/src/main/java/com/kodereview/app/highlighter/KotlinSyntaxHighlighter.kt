@@ -35,7 +35,7 @@ object KotlinSyntaxHighlighter {
                 val tokenStart = lexer.tokenStart
                 val tokenEnd = lexer.tokenEnd
                 val tokenText = source.substring(tokenStart, tokenEnd)
-                val tokenType: IElementType = lexer.tokenType
+                val tokenType = lexer.tokenType ?: break
 
                 val style = getTokenStyle(tokenType, tokenText)
                 if (style != null) {

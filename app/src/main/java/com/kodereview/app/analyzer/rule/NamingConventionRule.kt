@@ -70,7 +70,7 @@ class NamingConventionRule : Rule {
                                 severity = Severity.INFO,
                                 message = "Const value '$name' should use UPPER_SNAKE_CASE",
                                 ruleId = id,
-                                suggestion = "Rename to '${name.replace(Regex("(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_").uppercase()}'"
+                                suggestion = "Rename to UPPER_SNAKE_CASE"
                             )
                         )
                     }

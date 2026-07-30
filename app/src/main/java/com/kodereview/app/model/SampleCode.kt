@@ -1,8 +1,9 @@
 package com.kodereview.app.model
 
 object SampleCode {
-    val defaultSample = """@Composable
-fun greeting(name: String) {
+    val defaultSample = """
+@Composable
+fun Greeting(name: String) {
     var count by remember { mutableStateOf(0) }
 
     Column(
@@ -12,12 +13,12 @@ fun greeting(name: String) {
             .size(200.dp)
     ) {
         Text(
-            text = "Hello, $name!",
+            text = "Hello, " + name + "!",
             modifier = Modifier.padding(8.dp)
         )
 
         Button(onClick = { count++ }) {
-            Text("Clicked $count times")
+            Text("Clicked " + count + " times")
         }
     }
 }
@@ -33,7 +34,7 @@ fun MyScreen() {
     }
 }
 
-class myClass {
+class MyClass {
     val MY_VALUE = 42
 
     fun double(x: Int): Int {
