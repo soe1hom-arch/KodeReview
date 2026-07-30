@@ -168,7 +168,7 @@ class ComposePreviewParser(private val source: String) {
                 (ch == 'v' && content.regionMatches(p, "var ", 0, 4)) ||
                 (ch == 'c' && content.regionMatches(p, "const ", 0, 6))
             ) {
-                p = skipToChar(content, p, ';', '\n', '}', '(', ')') ?: (p + 1)
+                p = skipToChar(content, p, ';', '\n') ?: (p + 1)
                 continue
             }
 
@@ -355,6 +355,7 @@ class ComposePreviewParser(private val source: String) {
         val modifier = parseModifier(args["modifier"] ?: "")
         val text = extractStringArg(args, "text")
         val children = if (contentBody != null) parseBody(contentBody, offset) else emptyList()
+        val buttonText = text ?: extractTextFromNodeList(children)
 
         return when (name) {
             "Column" -> UiNode.Column(
@@ -395,17 +396,17 @@ class ComposePreviewParser(private val source: String) {
             )
             "Button" -> UiNode.Button(
                 modifier = modifier,
-                text = text ?: "",
+                text = buttonText,
                 onClickAvailable = args.containsKey("onClick"),
                 enabled = args["enabled"]?.let { it != "false" } ?: true
             )
             "OutlinedButton" -> UiNode.OutlinedButton(
                 modifier = modifier,
-                text = text ?: ""
+                text = buttonText
             )
             "TextButton" -> UiNode.TextButton(
                 modifier = modifier,
-                text = text ?: ""
+                text = buttonText
             )
             "Icon" -> UiNode.Icon(
                 modifier = modifier,
@@ -452,6 +453,14 @@ class ComposePreviewParser(private val source: String) {
                 error = if (children.isNotEmpty() || text != null) null else "Unknown component"
             )
         }
+    }
+
+
+    private fun extractTextFromNodeList(children: List<UiNode>): String {
+        for (child in children) {
+            if (child is UiNode.Text) return child.text
+        }
+        return ""
     }
 
     /**

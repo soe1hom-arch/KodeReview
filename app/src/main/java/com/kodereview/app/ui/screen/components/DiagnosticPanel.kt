@@ -9,10 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,7 +38,7 @@ fun DiagnosticPanel(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val expanded = remember { mutableStateOf(true) }
+    var expanded by remember { mutableStateOf(true) }
 
     Column(
         modifier = modifier
@@ -54,13 +51,13 @@ fun DiagnosticPanel(
             errorCount = errorCount,
             warningCount = warningCount,
             infoCount = infoCount,
-            expanded = expanded.value,
-            onToggle = { expanded.value = !expanded.value },
+            expanded = expanded,
+            onToggle = { expanded = !expanded },
             onDismiss = onDismiss
         )
 
         // Issues list
-        if (expanded.value && issues.isNotEmpty()) {
+        if (expanded && issues.isNotEmpty()) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -99,33 +96,42 @@ private fun DiagnosticSummaryBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = Icons.Default.BugReport,
+            imageVector = if (errorCount > 0) Icons.Default.BugReport else Icons.Default.Info,
             contentDescription = "Issues",
-            tint = OnSurface,
+            tint = if (errorCount > 0) ErrorColor else OnSurface,
             modifier = Modifier.size(18.dp)
         )
 
         Spacer(Modifier.width(8.dp))
 
         Text(
-            text = "$totalIssues issues",
+            text = "$totalIssues issue${if (totalIssues != 1) "s" else ""}",
             style = MaterialTheme.typography.labelLarge,
-            color = OnSurface
+            color = OnSurface,
+            fontWeight = FontWeight.Bold
         )
 
         Spacer(Modifier.width(12.dp))
 
         if (errorCount > 0) {
-            SeverityBadge(count = errorCount, color = ErrorColor, label = "errors")
+            SeverityBadge(count = errorCount, color = ErrorColor, label = "error${if (errorCount != 1) "s" else ""}")
         }
         if (warningCount > 0) {
-            SeverityBadge(count = warningCount, color = WarningColor, label = "warnings")
+            SeverityBadge(count = warningCount, color = WarningColor, label = "warning${if (warningCount != 1) "s" else ""}")
         }
         if (infoCount > 0) {
             SeverityBadge(count = infoCount, color = InfoColor, label = "info")
         }
 
         Spacer(Modifier.weight(1f))
+
+        Text(
+            text = if (expanded) "▾" else "▸",
+            color = OnSurfaceVariant,
+            fontSize = 14.sp
+        )
+
+        Spacer(Modifier.width(4.dp))
 
         IconButton(
             onClick = onDismiss,
@@ -143,7 +149,12 @@ private fun DiagnosticSummaryBar(
 
 @Composable
 private fun SeverityBadge(count: Int, color: Color, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier
+            .background(color.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Box(
             modifier = Modifier
                 .size(8.dp)
@@ -154,10 +165,10 @@ private fun SeverityBadge(count: Int, color: Color, label: String) {
         Text(
             text = "$count $label",
             style = MaterialTheme.typography.labelSmall,
-            color = OnSurfaceVariant,
-            maxLines = 1
+            color = color,
+            maxLines = 1,
+            fontWeight = FontWeight.Bold
         )
-        Spacer(Modifier.width(10.dp))
     }
 }
 
@@ -168,7 +179,7 @@ private fun IssueItem(
     onClick: () -> Unit
 ) {
     val (icon, color) = when (issue.severity) {
-        Severity.ERROR -> Icons.Default.Info to ErrorColor
+        Severity.ERROR -> Icons.Default.Cancel to ErrorColor
         Severity.WARNING -> Icons.Default.Warning to WarningColor
         Severity.INFO, Severity.SUGGESTION -> Icons.Default.Info to InfoColor
     }
@@ -194,9 +205,9 @@ private fun IssueItem(
             Spacer(Modifier.width(8.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "[L${issue.line + 1}:${issue.column + 1}]",
+                        text = "L${issue.line + 1}:${issue.column + 1}",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp
@@ -213,7 +224,16 @@ private fun IssueItem(
                         color = color,
                         maxLines = 1
                     )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = issue.severity.name,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                        color = color.copy(alpha = 0.7f),
+                        maxLines = 1
+                    )
                 }
+
+                Spacer(Modifier.height(2.dp))
 
                 Text(
                     text = issue.message,
@@ -224,8 +244,9 @@ private fun IssueItem(
                 )
 
                 if (issue.suggestion != null) {
+                    Spacer(Modifier.height(2.dp))
                     Text(
-                        text = "💡 ${issue.suggestion}",
+                        text = "→ ${issue.suggestion}",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = PrimaryColor,
                         maxLines = 1,

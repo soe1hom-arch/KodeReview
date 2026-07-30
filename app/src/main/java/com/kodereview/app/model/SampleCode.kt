@@ -3,42 +3,40 @@ package com.kodereview.app.model
 object SampleCode {
     val defaultSample = """
 @Composable
-fun Greeting(name: String) {
-    var count by remember { mutableStateOf(0) }
+fun myScreen() {
+    var counter = remember { mutableStateOf(0) }
+    var name by remember { mutableStateOf("KodeReview") }
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .padding(16.dp)
-            .size(200.dp)
     ) {
         Text(
-            text = "Hello, " + name + "!",
-            modifier = Modifier.padding(8.dp)
+            text = "Welcome to KodeReview!",
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(8.dp).fillMaxWidth()
         )
 
-        Button(onClick = { count++ }) {
-            Text("Clicked " + count + " times")
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(onClick = { counter.value++ }) {
+            Text(text = "Count: " + counter.value)
         }
-    }
-}
 
-@Composable
-fun MyScreen() {
-    val items = remember { listOf("A", "B", "C") }
+        Spacer(modifier = Modifier.height(8.dp))
 
-    LazyColumn {
-        items(items) { item ->
-            Text(item)
+        OutlinedButton(onClick = { }) {
+            Text(text = "Reset")
         }
-    }
-}
 
-class MyClass {
-    val MY_VALUE = 42
+        Spacer(modifier = Modifier.weight(1f))
 
-    fun double(x: Int): Int {
-        return x * 2
+        Text(
+            text = "Powered by KodeReview",
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
     }
 }
 """.trimIndent()
