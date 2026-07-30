@@ -24,41 +24,20 @@ import com.kodereview.app.ui.screen.EditorScreen
 import com.kodereview.app.ui.theme.EditorBackground
 import com.kodereview.app.ui.theme.KodeReviewTheme
 
-class MainActivity : ComponentActivity() {
-    companion object {
-        private const val TAG = "KodeReview"
-    }
+private const val TAG = "KodeReview"
 
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        try {
-            super.onCreate(savedInstanceState)
-            enableEdgeToEdge()
-            setContent {
-                KodeReviewTheme {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = EditorBackground
-                    ) {
-                        ErrorBoundary {
-                            KodeReviewApp(activity = this@MainActivity)
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Fatal error during onCreate", e)
-            // Fallback: show error on screen
-            setContent {
-                KodeReviewTheme {
-                    Box(
-                        modifier = Modifier.fillMaxSize().padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Error: ${e.message ?: "Unknown error"}\n\nPlease restart the app.",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            KodeReviewTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = EditorBackground
+                ) {
+                    ErrorBoundary {
+                        KodeReviewApp(activity = this@MainActivity)
                     }
                 }
             }
@@ -93,7 +72,7 @@ fun ErrorBoundary(
         try {
             content()
         } catch (e: Exception) {
-            Log.e("KodeReview", "Composition error", e)
+            Log.e(TAG, "Composition error", e)
             error = e
         }
     }
