@@ -635,35 +635,57 @@ object ComposePreviewRenderer {
 
     @Composable
     private fun RenderModalDrawerCompat(node: UiNode.ModalNavigationDrawer) {
-        Column(modifier = buildModifier(node.modifier).fillMaxWidth()) {
-            // Compact drawer summary bar — keeps the actual screen content visible.
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("☰", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            if (node.menuLabels.isNotEmpty()) {
-                                "Drawer: ${node.menuLabels.joinToString(" · ")}"
-                            } else {
-                                "Navigation Drawer (menu)"
-                            },
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
+        Box(modifier = buildModifier(node.modifier).fillMaxWidth()) {
             // Main content (Scaffold with top bar + bottom navigation)
             node.content?.let { RenderNode(it) }
             if (node.content == null) {
                 Text("(main content)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            // Scrim over the main content, like the real modal drawer
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(Color.Black.copy(alpha = 0.4f))
+            )
+            // Drawer sheet sliding in from the left with the app's own menu
+            val sheetWidth = node.drawerContent?.modifier?.entries
+                ?.filterIsInstance<ModifierEntry.Width>()
+                ?.firstOrNull()?.value
+                ?.let { parseNumberToDp(it) } ?: 300.dp
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .width(sheetWidth)
+                    .fillMaxHeight()
+            ) {
+                node.drawerContent?.let { RenderNode(it) }
+                if (node.drawerContent == null) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            "Menu",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        if (node.menuLabels.isNotEmpty()) {
+                            node.menuLabels.forEach { label ->
+                                Text(
+                                    label,
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        } else {
+                            Text(
+                                "Navigation Drawer (menu)",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
         }
     }

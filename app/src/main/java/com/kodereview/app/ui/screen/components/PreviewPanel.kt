@@ -252,8 +252,9 @@ fun PreviewPanel(
                     }
                 }
                 is PreviewResult.Success -> {
-                    val previewScheme = remember(themeColors) {
-                        buildPreviewColorScheme(themeColors)
+                    val baseScheme = MaterialTheme.colorScheme
+                    val previewScheme = remember(themeColors, baseScheme) {
+                        buildPreviewColorScheme(themeColors, baseScheme)
                     }
                     Column(modifier = Modifier.padding(8.dp)) {
                         Row(
@@ -352,13 +353,14 @@ private fun parseColorLiteral(expr: String): Color? {
  * `MaterialTheme.colorScheme.*` references and component defaults render with
  * the app's real colors instead of KodeReview's own theme.
  */
-@Composable
-private fun buildPreviewColorScheme(colors: Map<String, String>): ColorScheme {
-    if (colors.isEmpty()) return MaterialTheme.colorScheme
+private fun buildPreviewColorScheme(
+    colors: Map<String, String>,
+    def: ColorScheme
+): ColorScheme {
+    if (colors.isEmpty()) return def
     fun pick(vararg keys: String): Color? =
         keys.firstNotNullOfOrNull { key -> colors[key]?.let(::parseColorLiteral) }
 
-    val def = MaterialTheme.colorScheme
     return darkColorScheme(
         primary = pick("Green500", "PrimaryColor", "Primary", "ColorPrimary") ?: def.primary,
         secondary = pick("Cyan500", "SecondaryColor", "Secondary") ?: def.secondary,
