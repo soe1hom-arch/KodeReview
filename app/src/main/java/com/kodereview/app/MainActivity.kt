@@ -19,7 +19,9 @@ import com.kodereview.app.model.KotlinProjectIndex
 import com.kodereview.app.model.ProjectFile
 import com.kodereview.app.model.ReferenceFile
 import com.kodereview.app.ui.screen.EditorScreen
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.kodereview.app.ui.theme.EditorBackground
 import com.kodereview.app.ui.theme.KodeReviewTheme
 
@@ -56,13 +58,23 @@ class MainActivity : ComponentActivity() {
         if (intent?.action != Intent.ACTION_VIEW || intent.data == null) return
         try {
             val uri = intent.data!!
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                Log.d(TAG, "Persist intent perm: ${e.message}")
+            }
             val text = readTextFromUri(uri)
             if (text != null && text.isNotBlank()) {
                 Log.d(TAG, "Intent loaded: ${text.length} chars")
                 _pendingCode.value = text
+            } else {
+                Toast.makeText(this, "File tidak terbaca / kosong", Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Intent read error", e)
+            Toast.makeText(this, "Gagal baca file: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -105,6 +117,13 @@ fun KodeReviewApp(
     ) { uri: Uri? ->
         if (uri != null) {
             try {
+                try {
+                    activity.contentResolver.takePersistableUriPermission(
+                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (e: Exception) {
+                    Log.d(TAG, "Persist file perm: ${e.message}")
+                }
                 val text = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                 if (text != null && text.isNotBlank()) {
                     currentCode = text
@@ -178,6 +197,30 @@ fun KodeReviewApp(
                     "Folder dimuat: ${files.size} file .kt",
                     Toast.LENGTH_SHORT
                 ).show()
+                // Auto-load file utama agar editor tidak kosong/sample
+                val preferred = files.firstOrNull {
+                    it.fileName == "MainActivity.kt" || it.fileName == "MainScreen.kt" || it.fileName == "App.kt"
+                } ?: files.firstOrNull()
+                if (preferred != null) {
+                    val text = withContext(Dispatchers.IO) {
+                        try {
+                            activity.contentResolver.openInputStream(preferred.uri)
+                                ?.bufferedReader()?.use { it.readText() }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Auto load error: ${preferred.relativePath}", e)
+                            null
+                        }
+                    }
+                    if (text != null && text.isNotBlank()) {
+                        currentCode = text
+                        editorKey++
+                        Toast.makeText(
+                            activity,
+                            "Buka ${preferred.fileName} (${text.length} chars)",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
             }
         }
     }
@@ -216,6 +259,34 @@ fun KodeReviewApp(
             } catch (e: Exception) {
                 Log.e(TAG, "File picker error", e)
                 Toast.makeText(activity, "Cannot open file picker: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        },
+        onOpenProjectFile = { file ->
+            scope.launch {
+                val text = withContext(Dispatchers.IO) {
+                    try {
+                        activity.contentResolver.openInputStream(file.uri)
+                            ?.bufferedReader()?.use { it.readText() }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Project file read error: ${file.relativePath}", e)
+                        null
+                    }
+                }
+                if (text != null && text.isNotBlank()) {
+                    currentCode = text
+                    editorKey++
+                    Toast.makeText(
+                        activity,
+                        "Buka ${file.fileName} (${text.length} chars)",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        activity,
+                        "Gagal membaca ${file.fileName}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
     )

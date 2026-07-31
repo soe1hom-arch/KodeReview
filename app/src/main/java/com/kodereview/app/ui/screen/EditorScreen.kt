@@ -47,6 +47,7 @@ fun EditorScreen(
     projectFiles: List<ProjectFile> = emptyList(),
     folderStatus: String? = null,
     onPickFolder: (() -> Unit)? = null,
+    onOpenProjectFile: ((ProjectFile) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val analyzerEngine = remember { AnalyzerEngine() }
@@ -194,7 +195,7 @@ fun EditorScreen(
             }
 
             // Reference files row (auto-resolved + manual)
-            if (extraFiles.isNotEmpty() || autoFiles.isNotEmpty() || folderStatus != null || onAddReferenceFiles != null) {
+            if (extraFiles.isNotEmpty() || autoFiles.isNotEmpty() || folderStatus != null || projectFiles.isNotEmpty() || onAddReferenceFiles != null) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -210,6 +211,40 @@ fun EditorScreen(
                                 color = OnSurfaceVariant,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                             )
+                        }
+                    }
+                    if (projectFiles.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                "File:",
+                                fontSize = 10.sp,
+                                color = PrimaryColor,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                            projectFiles.forEach { file ->
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(PrimaryColor.copy(alpha = 0.12f))
+                                        .clickable { onOpenProjectFile?.invoke(file) }
+                                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        file.relativePath,
+                                        fontSize = 10.sp,
+                                        color = OnSurface,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
                         }
                     }
                     if (autoFiles.isNotEmpty() || extraFiles.isNotEmpty()) {
