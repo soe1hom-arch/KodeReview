@@ -130,7 +130,8 @@ sealed class UiNode {
     // Navigation components
     data class TopAppBar(
         override val modifier: ModifierModel = ModifierModel(),
-        val title: String = ""
+        val title: String = "",
+        val navigationIcon: String? = null
     ) : UiNode()
 
     data class NavigationBar(
@@ -141,7 +142,8 @@ sealed class UiNode {
     data class NavigationBarItem(
         override val modifier: ModifierModel = ModifierModel(),
         val selected: Boolean = false,
-        val label: String = ""
+        val label: String = "",
+        val icon: String? = null
     ) : UiNode()
 
     // Input components
@@ -167,7 +169,8 @@ sealed class UiNode {
     data class ModalNavigationDrawer(
         override val modifier: ModifierModel = ModifierModel(),
         val content: UiNode? = null,
-        val drawerContent: UiNode? = null
+        val drawerContent: UiNode? = null,
+        val menuLabels: List<String> = emptyList()
     ) : UiNode()
 
     data class ModalDrawerSheet(
@@ -185,6 +188,7 @@ sealed class UiNode {
     data class Unknown(
         override val modifier: ModifierModel = ModifierModel(),
         val name: String = "",
+        val text: String? = null,
         val error: String? = null,
         val children: List<UiNode> = emptyList()
     ) : UiNode()

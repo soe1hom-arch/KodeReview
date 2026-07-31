@@ -26,6 +26,9 @@ class ComposePreviewParser(
     /** Current custom-composable inlining depth (prevents infinite recursion). */
     private var inlineDepth = 0
 
+    /** Initial values of `var X by remember { mutableStateOf("...") }` in the current composable. */
+    private val stateValues = mutableMapOf<String, String>()
+
     private val MAX_INLINE_DEPTH = 8
     
     /** Check cancellation and iteration limits. Throws CancellationException if cancelled. */
@@ -206,6 +209,7 @@ class ComposePreviewParser(
                 if (bodyEnd == -1) return null
 
                 val bodyContent = source.substring(bodyStart + 1, bodyEnd)
+                scanStateValues(bodyContent)
                 val nodes = parseBody(bodyContent, bodyStart + 1)
 
                 return ParsedComposable(
@@ -221,6 +225,7 @@ class ComposePreviewParser(
                 val eqPos = bodyStart
                 val exprEnd = findExpressionEnd(source, eqPos + 1)
                 val bodyContent = source.substring(eqPos + 1, exprEnd)
+                scanStateValues(bodyContent)
                 val nodes = parseBody(bodyContent, eqPos + 1)
 
                 return ParsedComposable(
@@ -752,10 +757,11 @@ class ComposePreviewParser(
         inlineDepth++
         try {
             val nodes = parseBody(substituted, 0)
+            val labelText = extractStringArg(args, "label") ?: extractStringArg(args, "text")
             return if (nodes.isEmpty()) {
                 UiNode.Unknown(name = custom.name, error = "Empty body")
             } else {
-                UiNode.Unknown(name = custom.name, children = nodes)
+                UiNode.Unknown(name = custom.name, text = labelText, children = nodes)
             }
         } finally {
             inlineDepth--
@@ -1029,10 +1035,11 @@ class ComposePreviewParser(
             )
             "TopAppBar", "CenterAlignedTopAppBar" -> UiNode.TopAppBar(
                 modifier = modifier,
-                title = extractTextFromLambda(args["title"])
+                title = extractAllTextFromLambda(args["title"])
                     ?: extractStringArg(args, "title")
                     ?: extractStringArg(args, "__pos0")
-                    ?: ""
+                    ?: "",
+                navigationIcon = extractResourceName(args["navigationIcon"])
             )
             "NavigationBar" -> UiNode.NavigationBar(
                 modifier = modifier,
@@ -1040,12 +1047,13 @@ class ComposePreviewParser(
             )
             "NavigationBarItem" -> UiNode.NavigationBarItem(
                 modifier = modifier,
-                selected = args["selected"]?.let { it.toBooleanStrictOrNull() } ?: false,
+                selected = resolveSelectedExpression(args["selected"]),
                 label = extractTextFromLambda(args["label"])
                     ?: extractStringArg(args, "label")
                     ?: extractStringArg(args, "__pos0")
                     ?: text
-                    ?: ""
+                    ?: "",
+                icon = extractResourceName(args["icon"])
             )
             "Switch" -> UiNode.Switch(
                 modifier = modifier,
@@ -1061,11 +1069,15 @@ class ComposePreviewParser(
                 text = extractStringArg(args, "text") ?: extractStringArg(args, "__pos1"),
                 children = children
             )
-            "ModalNavigationDrawer" -> UiNode.ModalNavigationDrawer(
-                modifier = modifier,
-                content = children.firstOrNull(),
-                drawerContent = parseLambdaBody(args["drawerContent"])
-            )
+            "ModalNavigationDrawer" -> {
+                val drawer = parseLambdaBody(args["drawerContent"])
+                UiNode.ModalNavigationDrawer(
+                    modifier = modifier,
+                    content = children.firstOrNull(),
+                    drawerContent = drawer,
+                    menuLabels = collectMenuLabels(drawer)
+                )
+            }
             "ModalDrawerSheet" -> UiNode.ModalDrawerSheet(
                 modifier = modifier,
                 children = children
@@ -1078,6 +1090,7 @@ class ComposePreviewParser(
             else -> UiNode.Unknown(
                 modifier = modifier,
                 name = name,
+                text = extractStringArg(args, "label") ?: text,
                 error = if (children.isNotEmpty() || text != null) null else "Unknown component: $name",
                 children = children
             )
@@ -1260,7 +1273,18 @@ class ComposePreviewParser(
                     if (i > start && depth == 0) {
                         // Check if next non-whitespace is a valid continuation
                         val nextNonSpace = skipWhitespace(content, i)
-                        if (nextNonSpace < content.length && 
+                        if (nextNonSpace < content.length && content[nextNonSpace] == '=') {
+                            // Comparison expression: skip `==` and the following literal
+                            var j = nextNonSpace
+                            while (j < content.length && content[j] == '=') j++
+                            j = skipWhitespace(content, j)
+                            if (j < content.length && content[j] == '"') {
+                                val end = findStringEnd(content, j)
+                                i = if (end != -1) end else content.length
+                            } else {
+                                i = j
+                            }
+                        } else if (nextNonSpace < content.length && 
                             (content[nextNonSpace] == '.' || content[nextNonSpace] == '?' || content[nextNonSpace] == '!' || content[nextNonSpace] == ':')) {
                             i = nextNonSpace // Don't break, it's a chain continuation
                         } else {
@@ -1607,7 +1631,108 @@ class ComposePreviewParser(
         val nodes = parseBody(body, 0)
         return extractTextFromNodeList(nodes).ifEmpty { null }
     }
+
+    /**
+     * Collect up to [limit] texts inside a lambda (e.g. TopAppBar title with
+     * multiple Text rows) joined by " · ".
+     */
+    private fun extractAllTextFromLambda(argValue: String?, limit: Int = 3): String? {
+        if (argValue == null) return null
+        val trimmed = argValue.trim()
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null
+        val inner = trimmed.substring(1, trimmed.length - 1)
+        val arrowIdx = inner.indexOf("->")
+        val body = if (arrowIdx != -1 && inner.substring(0, arrowIdx).contains(" ")) {
+            inner.substring(arrowIdx + 2)
+        } else inner
+        val nodes = parseBody(body, 0)
+        return extractAllTextFromNodeList(nodes, limit).ifEmpty { null }
+    }
+
+    private fun extractAllTextFromNodeList(children: List<UiNode>, limit: Int = 3): String {
+        val found = mutableListOf<String>()
+        fun walk(nodes: List<UiNode>) {
+            for (child in nodes) {
+                when (child) {
+                    is UiNode.Text -> if (child.text.isNotBlank()) found.add(child.text)
+                    is UiNode.Column -> walk(child.children)
+                    is UiNode.Row -> walk(child.children)
+                    is UiNode.Box -> walk(child.children)
+                    is UiNode.Surface -> walk(child.children)
+                    is UiNode.Card -> walk(child.children)
+                    is UiNode.Unknown -> walk(child.children)
+                    else -> {}
+                }
+                if (found.size >= limit) return
+            }
+        }
+        walk(children)
+        return found.joinToString(" · ")
+    }
+
+    /**
+     * Record initial values of `var X by remember { mutableStateOf("v") }` so
+     * expressions like `selected = X == "v"` can be resolved statically.
+     */
+    private fun scanStateValues(body: String) {
+        stateValues.clear()
+        val re = Regex("""var\s+(\w+)\s+by\s+remember\s*\{\s*mutableStateOf\(\s*"([^"]*)"\s*\)\s*\}""")
+        for (m in re.findAll(body)) {
+            stateValues[m.groupValues[1]] = m.groupValues[2]
+        }
+    }
+
+    /**
+     * Resolve a `selected` argument: literal boolean or `stateVar == "value"`.
+     */
+    private fun resolveSelectedExpression(expr: String?): Boolean {
+        if (expr == null) return false
+        val trimmed = expr.trim()
+        trimmed.toBooleanStrictOrNull()?.let { return it }
+        val m = Regex("(\\w+)\\s*==\\s*\"([^\"]*)\"").find(trimmed)
+        if (m != null) {
+            return stateValues[m.groupValues[1]] == m.groupValues[2]
+        }
+        return false
+    }
+
+    /**
+     * Extract a drawable resource name (e.g. R.drawable.ic_home -> "ic_home")
+     * from an icon/navigationIcon lambda.
+     */
+    private fun extractResourceName(argValue: String?): String? {
+        if (argValue == null) return null
+        val m = Regex("""R\.drawable\.([\w_]+)""").find(argValue)
+        return m?.groupValues?.get(1)
+    }
+
+    /**
+     * Collect drawer menu item labels (custom composables with a `label` arg).
+     */
+    private fun collectMenuLabels(root: UiNode?, limit: Int = 8): List<String> {
+        val out = mutableListOf<String>()
+        fun walk(node: UiNode) {
+            if (out.size >= limit) return
+            when (node) {
+                is UiNode.Unknown -> {
+                    val label = node.text
+                    if (!label.isNullOrBlank()) out.add(label)
+                    node.children.forEach { walk(it) }
+                }
+                is UiNode.Column -> node.children.forEach { walk(it) }
+                is UiNode.Row -> node.children.forEach { walk(it) }
+                is UiNode.Box -> node.children.forEach { walk(it) }
+                is UiNode.Surface -> node.children.forEach { walk(it) }
+                is UiNode.Card -> node.children.forEach { walk(it) }
+                is UiNode.ModalDrawerSheet -> node.children.forEach { walk(it) }
+                else -> {}
+            }
+        }
+        root?.let { walk(it) }
+        return out
+    }
 }
+
 
 data class ParsedComposable(
     val name: String,

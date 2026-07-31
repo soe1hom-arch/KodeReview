@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -396,8 +397,18 @@ object ComposePreviewRenderer {
                 Text(
                     node.title.ifEmpty { "TopAppBar" },
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.Bold
                 )
+            },
+            navigationIcon = {
+                if (node.navigationIcon != null) {
+                    Text(
+                        "☰",
+                        fontSize = 22.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp)
+                    )
+                }
             },
             modifier = buildModifier(node.modifier)
         )
@@ -416,14 +427,42 @@ object ComposePreviewRenderer {
                         NavigationBarItem(
                             selected = child.selected,
                             onClick = { },
-                            icon = { Text("◆", fontSize = 14.sp) },
-                            label = { Text(child.label.ifEmpty { "Item" }, fontSize = 10.sp) }
+                            icon = { Text(resourceGlyph(child.icon), fontSize = 16.sp) },
+                            label = { Text(child.label.ifEmpty { "Item" }, fontSize = 10.sp, maxLines = 1) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         )
                     }
                     else -> RenderNode(child)
                 }
             }
         }
+    }
+
+    private fun resourceGlyph(resName: String?): String = when (resName) {
+        "ic_home" -> "🏠"
+        "ic_payload" -> "📦"
+        "ic_super" -> "⚡"
+        "ic_filesystem", "ic_file_manager", "ic_folder", "ic_files", "ic_file" -> "📁"
+        "ic_boot_image", "ic_boot" -> "🛠"
+        "ic_menu" -> "☰"
+        "ic_info" -> "ℹ️"
+        "ic_close" -> "✕"
+        "ic_save_alt" -> "💾"
+        "ic_delete" -> "🗑"
+        "ic_cleaning_services" -> "🧹"
+        "ic_content_copy" -> "📋"
+        "ic_refresh" -> "🔄"
+        "ic_chevron_right" -> "›"
+        "ic_arrow_back" -> "‹"
+        "ic_check_circle" -> "✅"
+        "ic_error", "ic_warning" -> "⚠"
+        else -> "◆"
     }
 
     @Composable
@@ -510,30 +549,31 @@ object ComposePreviewRenderer {
     @Composable
     private fun RenderModalDrawerCompat(node: UiNode.ModalNavigationDrawer) {
         Column(modifier = buildModifier(node.modifier).fillMaxWidth()) {
-            // Drawer panel (rendered statically for preview)
+            // Compact drawer summary bar — keeps the actual screen content visible.
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        "Navigation Drawer",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    node.drawerContent?.let { RenderNode(it) }
-                    if (node.drawerContent == null) {
-                        Text("(drawer content)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("☰", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (node.menuLabels.isNotEmpty()) {
+                                "Drawer: ${node.menuLabels.joinToString(" · ")}"
+                            } else {
+                                "Navigation Drawer (menu)"
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Divider(color = MaterialTheme.colorScheme.outline, thickness = 1.dp)
-            Spacer(Modifier.height(8.dp))
-            // Main content
+            // Main content (Scaffold with top bar + bottom navigation)
             node.content?.let { RenderNode(it) }
             if (node.content == null) {
                 Text("(main content)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -572,6 +612,24 @@ object ComposePreviewRenderer {
         // Inlined custom composable — render its real children.
         if (node.children.isNotEmpty()) {
             node.children.forEach { RenderNode(it) }
+            return
+        }
+        // Labelled custom component (e.g. drawer menu item) — show the label.
+        if (!node.text.isNullOrBlank()) {
+            Row(
+                modifier = buildModifier(node.modifier)
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("·", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    node.text!!,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
             return
         }
         // Component not found (usually defined in another file) — show a hint.
