@@ -1,3 +1,8 @@
+import java.io.InputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -107,7 +112,7 @@ val prepareLivePreviewAssets by tasks.registering {
         if (tmp.exists()) tmp.deleteRecursively()
         tmp.mkdirs()
         val sources = mutableListOf<File>()
-        sources += configurations.runtimeClasspath.get().files.filter { it.isFile }
+        sources += configurations.getByName("runtimeClasspath").files.filter { it.isFile }
         sources += File(project.layout.buildDirectory.get().asFile, "tmp/kotlin-classes/debug")
         sources += File(project.layout.buildDirectory.get().asFile, "intermediates/javac/debug/classes")
 
