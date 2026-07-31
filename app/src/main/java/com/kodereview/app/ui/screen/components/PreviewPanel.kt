@@ -3,12 +3,11 @@ package com.kodereview.app.ui.screen.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material3.*
@@ -260,31 +259,18 @@ private fun RenderPreviewTree(
     colors: Map<String, String>,
     scheme: ColorScheme
 ) {
-    try {
-        MaterialTheme(colorScheme = scheme) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .border(1.dp, SurfaceVariant, RoundedCornerShape(8.dp)),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Box(modifier = Modifier.padding(2.dp), contentAlignment = Alignment.TopStart) {
-                    ComposePreviewRenderer.Render(nodes, colors)
-                }
-            }
-        }
-    } catch (e: Exception) {
-        Text(
-            "Preview render error: ${e.message}\n\n" + treeDump(nodes),
-            style = MaterialTheme.typography.labelSmall,
-            color = ErrorColor,
-            fontFamily = FontFamily.Monospace,
+    MaterialTheme(colorScheme = scheme) {
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(8.dp)
-        )
+                .clip(RoundedCornerShape(8.dp))
+                .border(1.dp, SurfaceVariant, RoundedCornerShape(8.dp)),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Box(modifier = Modifier.padding(2.dp), contentAlignment = Alignment.TopStart) {
+                ComposePreviewRenderer.Render(nodes, colors)
+            }
+        }
     }
 }
 
@@ -480,8 +466,7 @@ private fun PreviewHeader(
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                    containerColor = EditorBackground
+                    onDismissRequest = { menuExpanded = false }
                 ) {
                     composables.forEachIndexed { index, c ->
                         DropdownMenuItem(
