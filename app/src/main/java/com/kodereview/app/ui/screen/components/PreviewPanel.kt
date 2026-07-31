@@ -70,6 +70,9 @@ fun PreviewPanel(
     var selectedIndex by remember(mergedSource) {
         mutableStateOf(0)
     }
+    var showTree by remember(mergedSource) {
+        mutableStateOf(false)
+    }
     var themeColors by remember(mergedSource) {
         mutableStateOf<Map<String, String>>(emptyMap())
     }
@@ -158,65 +161,36 @@ fun PreviewPanel(
     }
 
     Column(modifier = modifier) {
-        PreviewHeader(previewResult)
-
-        // Composable selector
-        if (composables.size > 1) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(EditorBackground)
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                composables.forEachIndexed { index, c ->
-                    val selected = index == selectedIndex
-                    OutlinedButton(
-                        onClick = {
-                            selectedIndex = index
-                            val nodeCount = countNodes(c.body)
-                            previewResult = if (c.body.isEmpty()) {
-                                PreviewResult.Empty("'${c.name}' found but no UI nodes.")
-                            } else {
-                                PreviewResult.Success(
-                                    name = c.name,
-                                    nodes = c.body,
-                                    totalComposables = composables.size,
-                                    nodeCount = nodeCount
-                                )
-                            }
-                        },
-                        modifier = Modifier.height(32.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp),
-                        border = BorderStroke(
-                            1.dp,
-                            if (selected) PrimaryColor else SurfaceVariant
-                        ),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = if (selected) PrimaryColor.copy(alpha = 0.12f)
-                                else androidx.compose.ui.graphics.Color.Transparent
-                        )
-                    ) {
-                        Text(
-                            c.name,
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) PrimaryColor else OnSurfaceVariant,
-                            maxLines = 1
-                        )
-                    }
+        // Header bar: title + composable selector + tree toggle. The preview
+        // area below it is left clean, full-size and scrollable.
+        PreviewHeader(
+            result = previewResult,
+            composables = composables,
+            selectedIndex = selectedIndex,
+            showTree = showTree,
+            onSelectComposable = { index ->
+                selectedIndex = index
+                val c = composables[index]
+                val nodeCount = countNodes(c.body)
+                previewResult = if (c.body.isEmpty()) {
+                    PreviewResult.Empty("'${c.name}' found but no UI nodes.")
+                } else {
+                    PreviewResult.Success(
+                        name = c.name,
+                        nodes = c.body,
+                        totalComposables = composables.size,
+                        nodeCount = nodeCount
+                    )
                 }
-            }
-        }
+            },
+            onToggleTree = { showTree = !showTree }
+        )
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
                 .background(EditorBackground)
-                .padding(4.dp)
         ) {
             when (val result = previewResult) {
                 is PreviewResult.Loading -> {
@@ -256,23 +230,19 @@ fun PreviewPanel(
                     val previewScheme = remember(themeColors, baseScheme) {
                         buildPreviewColorScheme(themeColors, baseScheme)
                     }
-                    Column(modifier = Modifier.padding(8.dp)) {
-                        Row(
+                    if (showTree) {
+                        Text(
+                            treeDump(result.nodes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = OnSurfaceVariant,
+                            fontFamily = FontFamily.Monospace,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .background(PrimaryColor.copy(alpha = 0.08f), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "✓ ${result.nodeCount} node(s) from ${result.name}()",
-                                color = PrimaryColor,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        RenderPreviewTree(result.nodes, result.name, themeColors, previewScheme)
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(8.dp)
+                        )
+                    } else {
+                        RenderPreviewTree(result.nodes, themeColors, previewScheme)
                     }
                 }
             }
@@ -287,48 +257,34 @@ fun PreviewPanel(
 @Composable
 private fun RenderPreviewTree(
     nodes: List<UiNode>,
-    name: String,
     colors: Map<String, String>,
     scheme: ColorScheme
 ) {
-    var showTree by remember(nodes, name, colors) { mutableStateOf(false) }
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            TextButton(onClick = { showTree = !showTree }) {
-                Text(
-                    if (showTree) "◉ Render" else "☰ Tree",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = PrimaryColor
-                )
-            }
-        }
-        if (showTree) {
-            Text(
-                treeDump(nodes),
-                style = MaterialTheme.typography.labelSmall,
-                color = OnSurfaceVariant,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-            )
-        } else {
-            MaterialTheme(colorScheme = scheme) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .border(1.dp, SurfaceVariant, RoundedCornerShape(8.dp)),
-                    color = MaterialTheme.colorScheme.surface
-                ) {
-                    Box(modifier = Modifier.padding(2.dp), contentAlignment = Alignment.TopStart) {
-                        ComposePreviewRenderer.Render(nodes, colors)
-                    }
+    try {
+        MaterialTheme(colorScheme = scheme) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(1.dp, SurfaceVariant, RoundedCornerShape(8.dp)),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Box(modifier = Modifier.padding(2.dp), contentAlignment = Alignment.TopStart) {
+                    ComposePreviewRenderer.Render(nodes, colors)
                 }
             }
         }
+    } catch (e: Exception) {
+        Text(
+            "Preview render error: ${e.message}\n\n" + treeDump(nodes),
+            style = MaterialTheme.typography.labelSmall,
+            color = ErrorColor,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(8.dp)
+        )
     }
 }
 
@@ -414,6 +370,9 @@ private fun treeDump(nodes: List<UiNode>, indent: String = ""): String {
                 listOfNotNull(node.drawerContent, node.content).forEach {
                     sb.append(treeDump(listOf(it), indent + "  "))
                 }
+                node.dialogs.forEach {
+                    sb.append(treeDump(listOf(it), indent + "  "))
+                }
             }
             is UiNode.ModalDrawerSheet -> sb.append(treeDump(node.children, indent + "  "))
             is UiNode.NavigationBar -> sb.append(treeDump(node.children, indent + "  "))
@@ -451,6 +410,7 @@ private fun countNodes(nodes: List<UiNode>): Int {
                 listOfNotNull(node.drawerContent, node.content).forEach {
                     count += countNodes(listOf(it))
                 }
+                node.dialogs.forEach { count += countNodes(listOf(it)) }
             }
             is UiNode.Unknown -> count += countNodes(node.children)
             else -> {}
@@ -460,22 +420,29 @@ private fun countNodes(nodes: List<UiNode>): Int {
 }
 
 @Composable
-private fun PreviewHeader(result: PreviewResult) {
-    val name = when (result) {
-        is PreviewResult.Success -> result.name
-        else -> null
-    }
+private fun PreviewHeader(
+    result: PreviewResult,
+    composables: List<ParsedComposable>,
+    selectedIndex: Int,
+    showTree: Boolean,
+    onSelectComposable: (Int) -> Unit,
+    onToggleTree: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(SurfaceVariant)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(Icons.Default.PhoneAndroid, "Preview", tint = PrimaryColor, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
         Text("Live Preview", style = MaterialTheme.typography.labelMedium, color = OnSurface, fontWeight = FontWeight.Bold)
-        name?.let { Text(" · $it()", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant) }
+        val name = when (result) {
+            is PreviewResult.Success -> result.name
+            else -> null
+        }
+        name?.let { Text(" \u00b7 $it()", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant, maxLines = 1) }
         Spacer(Modifier.weight(1f))
         Text(
             when (result) {
@@ -487,6 +454,63 @@ private fun PreviewHeader(result: PreviewResult) {
             style = MaterialTheme.typography.labelSmall,
             color = OnSurfaceVariant
         )
+        if (result is PreviewResult.Success && composables.size > 1) {
+            Spacer(Modifier.width(8.dp))
+            var menuExpanded by remember { mutableStateOf(false) }
+            Box {
+                OutlinedButton(
+                    onClick = { menuExpanded = true },
+                    modifier = Modifier.height(30.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                    border = BorderStroke(1.dp, PrimaryColor.copy(alpha = 0.5f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = PrimaryColor.copy(alpha = 0.12f)
+                    )
+                ) {
+                    Text(
+                        composables.getOrNull(selectedIndex)?.name ?: "-",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryColor,
+                        maxLines = 1
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text("\u25BE", fontSize = 9.sp, color = PrimaryColor)
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    containerColor = EditorBackground
+                ) {
+                    composables.forEachIndexed { index, c ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    c.name,
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onSelectComposable(index)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        if (result is PreviewResult.Success) {
+            TextButton(onClick = onToggleTree, contentPadding = PaddingValues(horizontal = 6.dp)) {
+                Text(
+                    if (showTree) "\u25c9 Render" else "\u2630 Tree",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PrimaryColor
+                )
+            }
+        }
     }
 }
 

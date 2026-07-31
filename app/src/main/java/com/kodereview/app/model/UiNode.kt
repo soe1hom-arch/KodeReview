@@ -170,7 +170,8 @@ sealed class UiNode {
         override val modifier: ModifierModel = ModifierModel(),
         val content: UiNode? = null,
         val drawerContent: UiNode? = null,
-        val menuLabels: List<String> = emptyList()
+        val menuLabels: List<String> = emptyList(),
+        val dialogs: List<UiNode> = emptyList()
     ) : UiNode()
 
     data class ModalDrawerSheet(

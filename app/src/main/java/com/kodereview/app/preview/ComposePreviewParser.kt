@@ -567,8 +567,9 @@ class ComposePreviewParser(
             }
         }
 
-        val filtered = if (containsDialog(nodes)) emptyList() else nodes
-        return Pair(filtered, after)
+        // Dialog branches are kept so the preview can show dialog content
+        // (e.g. About, credits, confirm dialogs) instead of hiding them.
+        return Pair(nodes, after)
     }
 
     /**
@@ -1084,9 +1085,10 @@ class ComposePreviewParser(
                 val drawer = parseLambdaBody(args["drawerContent"])
                 UiNode.ModalNavigationDrawer(
                     modifier = modifier,
-                    content = children.firstOrNull(),
+                    content = children.firstOrNull { it !is UiNode.Dialog },
                     drawerContent = drawer,
-                    menuLabels = collectMenuLabels(drawer)
+                    menuLabels = collectMenuLabels(drawer),
+                    dialogs = children.filter { it is UiNode.Dialog }
                 )
             }
             "ModalDrawerSheet" -> UiNode.ModalDrawerSheet(

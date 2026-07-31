@@ -53,9 +53,7 @@ object ComposePreviewRenderer {
         val fullScreen = nodes.any { it is UiNode.Scaffold || it is UiNode.ModalNavigationDrawer }
         if (fullScreen) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 nodes.forEach { node ->
                     RenderNode(node)
@@ -66,7 +64,6 @@ object ComposePreviewRenderer {
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(8.dp)
             ) {
                 CompositionLocalProvider(LocalInScroll provides true) {
                     nodes.forEach { node ->
@@ -609,24 +606,76 @@ object ComposePreviewRenderer {
 
     @Composable
     private fun RenderDialogCompat(node: UiNode.Dialog) {
-        Surface(
-            modifier = buildModifier(node.modifier)
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                node.title?.let {
-                    Text(it, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Spacer(Modifier.height(8.dp))
+        val inScroll = LocalInScroll.current
+        if (inScroll) {
+            // Document (scrollable) mode: render every dialog as a distinct
+            // inline card so dialog content (About, credits, confirms) is
+            // visible without covering the main screen.
+            Card(
+                modifier = buildModifier(node.modifier)
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("▢", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            node.title?.let { "Dialog: $it" } ?: "Dialog",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    node.text?.let {
+                        Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    node.children.forEach { RenderNode(it) }
                 }
-                node.text?.let {
-                    Text(it, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(8.dp))
+            }
+        } else {
+            // Fullscreen mode: centered overlay with scrim, like the real dialog.
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(Color.Black.copy(alpha = 0.5f))
+                )
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 6.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 460.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp)
+                    ) {
+                        CompositionLocalProvider(LocalInScroll provides true) {
+                            node.title?.let {
+                                Text(it, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                Spacer(Modifier.height(8.dp))
+                            }
+                            node.text?.let {
+                                Text(it, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.height(8.dp))
+                            }
+                            node.children.forEach { RenderNode(it) }
+                        }
+                    }
                 }
-                node.children.forEach { RenderNode(it) }
             }
         }
     }
@@ -660,7 +709,12 @@ object ComposePreviewRenderer {
             ) {
                 node.drawerContent?.let { RenderNode(it) }
                 if (node.drawerContent == null) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp)
+                    ) {
                         Text(
                             "Menu",
                             fontWeight = FontWeight.Bold,
@@ -687,6 +741,9 @@ object ComposePreviewRenderer {
                     }
                 }
             }
+            // Dialogs declared inside the drawer content lambda (e.g. the About
+            // dialog after the Scaffold) render as overlays on top.
+            node.dialogs.forEach { RenderNode(it) }
         }
     }
 
@@ -696,7 +753,12 @@ object ComposePreviewRenderer {
             modifier = buildModifier(node.modifier).fillMaxWidth(),
             color = MaterialTheme.colorScheme.surfaceVariant
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)
+            ) {
                 node.children.forEach { RenderNode(it) }
             }
         }
