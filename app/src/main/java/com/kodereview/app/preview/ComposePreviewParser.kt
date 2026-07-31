@@ -820,10 +820,10 @@ class ComposePreviewParser(
         var depth = 0
         while (i < content.length) {
             when (content[i]) {
-                '(' -> depth++
+                '(' -> { depth++; i++ }
                 ')' -> {
                     if (depth == 0) return i
-                    depth--
+                    depth--; i++
                 }
                 ',' -> { if (depth == 0) return i }
                 '}' -> { if (depth == 0) return i }
