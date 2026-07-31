@@ -1,6 +1,7 @@
 package com.kodereview.app.live
 
 import android.content.Context
+import dalvik.system.InMemoryDexClassLoader
 import androidx.compose.runtime.Composer
 import com.android.tools.r8.CompilationMode
 import com.android.tools.r8.D8
@@ -208,7 +209,7 @@ object LiveCompiler {
             } catch (t: Throwable) {
                 continue
             }
-            val candidates = clazz.declaredMethods.filter { it.isStatic }
+            val candidates = clazz.declaredMethods.filter { java.lang.reflect.Modifier.isStatic(it.modifiers) }
             if (desired != null) {
                 // Zero-arg composable: (Composer, int changed)
                 val direct = candidates.firstOrNull {
