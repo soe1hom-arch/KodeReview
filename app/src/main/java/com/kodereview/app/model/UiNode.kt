@@ -122,7 +122,9 @@ sealed class UiNode {
     // Scaffold / top-level
     data class Scaffold(
         override val modifier: ModifierModel = ModifierModel(),
-        val content: UiNode? = null
+        val content: UiNode? = null,
+        val topBar: UiNode? = null,
+        val bottomBar: UiNode? = null
     ) : UiNode()
 
     // Navigation components
@@ -164,7 +166,8 @@ sealed class UiNode {
     // Drawer
     data class ModalNavigationDrawer(
         override val modifier: ModifierModel = ModifierModel(),
-        val content: UiNode? = null
+        val content: UiNode? = null,
+        val drawerContent: UiNode? = null
     ) : UiNode()
 
     data class ModalDrawerSheet(
@@ -182,6 +185,7 @@ sealed class UiNode {
     data class Unknown(
         override val modifier: ModifierModel = ModifierModel(),
         val name: String = "",
-        val error: String? = null
+        val error: String? = null,
+        val children: List<UiNode> = emptyList()
     ) : UiNode()
 }

@@ -13,6 +13,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -365,7 +366,13 @@ object ComposePreviewRenderer {
     @Composable
     private fun RenderScaffold(node: UiNode.Scaffold) {
         androidx.compose.material3.Scaffold(
-            modifier = buildModifier(node.modifier)
+            modifier = buildModifier(node.modifier).fillMaxWidth(),
+            topBar = {
+                node.topBar?.let { RenderNode(it) }
+            },
+            bottomBar = {
+                node.bottomBar?.let { RenderNode(it) }
+            }
         ) {
             Box(modifier = Modifier.padding(it)) {
                 node.content?.let { RenderNode(it) }
@@ -495,15 +502,34 @@ object ComposePreviewRenderer {
 
     @Composable
     private fun RenderModalDrawerCompat(node: UiNode.ModalNavigationDrawer) {
-        Surface(
-            modifier = buildModifier(node.modifier).fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surfaceVariant
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Drawer", fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                Text("(drawer content)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                node.content?.let { RenderNode(it) }
+        Column(modifier = buildModifier(node.modifier).fillMaxWidth()) {
+            // Drawer panel (rendered statically for preview)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        "Navigation Drawer",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    node.drawerContent?.let { RenderNode(it) }
+                    if (node.drawerContent == null) {
+                        Text("(drawer content)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(8.dp))
+            // Main content
+            node.content?.let { RenderNode(it) }
+            if (node.content == null) {
+                Text("(main content)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -536,12 +562,16 @@ object ComposePreviewRenderer {
 
     @Composable
     private fun RenderUnknown(node: UiNode.Unknown) {
-        Text(
-            text = "<${node.name} />",
-            modifier = buildModifier(node.modifier).padding(2.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall
-        )
+        Column(modifier = buildModifier(node.modifier)) {
+            Text(
+                text = "<${node.name} />",
+                modifier = Modifier.padding(vertical = 2.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace
+            )
+            node.children.forEach { RenderNode(it) }
+        }
     }
 
     // ── Modifier builder ──
@@ -552,8 +582,8 @@ object ComposePreviewRenderer {
         for (entry in modifier.entries) {
             m = when (entry) {
                 is ModifierEntry.FillMaxWidth -> m.fillMaxWidth()
-                is ModifierEntry.FillMaxHeight -> m.fillMaxHeight()
-                is ModifierEntry.FillMaxSize -> m.fillMaxSize()
+                is ModifierEntry.FillMaxHeight -> m
+                is ModifierEntry.FillMaxSize -> m.fillMaxWidth()
                 is ModifierEntry.Width -> m.width(parseNumberToDp(entry.value))
                 is ModifierEntry.Height -> m.height(parseNumberToDp(entry.value))
                 is ModifierEntry.Size -> {
@@ -583,6 +613,13 @@ object ComposePreviewRenderer {
                     m.clip(shape)
                 }
                 is ModifierEntry.Alpha -> m.alpha(entry.value?.value ?: 1f)
+                is ModifierEntry.Clickable -> m.clickable(enabled = entry.enabled, onClick = { })
+                is ModifierEntry.Border -> {
+                    val width = entry.width?.let { parseNumberToDp(it) } ?: 1.dp
+                    val color = parseColor(entry.color) ?: MaterialTheme.colorScheme.outline
+                    val shape = parseShape(entry.shape) ?: RoundedCornerShape(0.dp)
+                    m.border(width, color, shape)
+                }
                 is ModifierEntry.Offset -> {
                     val x = entry.x?.let { parseNumberToDp(it) } ?: 0.dp
                     val y = entry.y?.let { parseNumberToDp(it) } ?: 0.dp

@@ -11,16 +11,21 @@ import kotlin.math.min
  */
 class ComposePreviewParser(
     private val source: String,
-    private val isActive: () -> Boolean = { true }
+    private val isActive: () -> Boolean = { true },
+    private val timeoutMs: Long = 0L
 ) {
     private var parseIterations = 0
+    private val deadlineNanos: Long = if (timeoutMs > 0) System.nanoTime() + timeoutMs * 1_000_000 else 0L
     
     /** Check cancellation and iteration limits. Throws CancellationException if cancelled. */
     private fun ensureActive() {
         if (!isActive()) throw kotlinx.coroutines.CancellationException("Parser cancelled")
         parseIterations++
-        if (parseIterations > 200000) {
-            throw IllegalStateException("Parser exceeded maximum iteration limit (200000)")
+        if (parseIterations > 2_000_000) {
+            throw IllegalStateException("Parser exceeded maximum iteration limit")
+        }
+        if (deadlineNanos > 0L && System.nanoTime() > deadlineNanos) {
+            throw IllegalStateException("Parse timed out after ${timeoutMs}ms")
         }
     }
 
@@ -69,7 +74,7 @@ class ComposePreviewParser(
         val all = parseAll()
         if (all.isEmpty()) return null
         val preview = all.find { it.hasPreviewAnnotation }
-        return preview ?: all.last()
+        return preview ?: all.first()
     }
 
     /**
@@ -180,6 +185,8 @@ class ComposePreviewParser(
     private fun skipImports(start: Int): Int {
         var pos = start
         while (pos < source.length) {
+
+            ensureActive()
             val ch = source[pos]
             if (ch == 'i' && source.regionMatches(pos, "import ", 0, 7)) {
                 val endOfLine = source.indexOf('\n', pos)
@@ -233,9 +240,16 @@ class ComposePreviewParser(
                 (ch == 'c' && content.regionMatches(p, "const ", 0, 6)) ||
                 (ch == 'l' && content.regionMatches(p, "lateinit ", 0, 9))
             ) {
-                // Skip to end of line - handles single-line declarations
-                val eol = content.indexOf('\n', p)
-                p = if (eol == -1) content.length else eol + 1
+                // Skip to end of statement - handles multi-line declarations with blocks
+                p = skipStatementEnd(content, p)
+                continue
+            }
+
+            // catch / finally blocks following try - skip them
+            if ((ch == 'c' && content.regionMatches(p, "catch", 0, 5)) ||
+                (ch == 'f' && content.regionMatches(p, "finally", 0, 7))
+            ) {
+                p = skipControlFlowBlock(content, p)
                 continue
             }
 
@@ -304,6 +318,7 @@ class ComposePreviewParser(
         var i = p
         // Skip to the first '{' that starts the block body
         while (i < content.length) {
+            ensureActive()
             when (content[i]) {
                 '{' -> {
                     val end = findMatchingBrace(content, i)
@@ -345,6 +360,7 @@ class ComposePreviewParser(
         var i = p
         // Find the opening brace or paren
         while (i < content.length) {
+            ensureActive()
             when (content[i]) {
                 '{' -> {
                     val end = findMatchingBrace(content, i)
@@ -435,6 +451,8 @@ class ComposePreviewParser(
 
         while (p < argsStr.length) {
             p = skipWhitespaceAndComments(argsStr, p)
+
+            ensureActive()
             if (p >= argsStr.length) break
 
             // Find key (identifier before '=')
@@ -551,7 +569,7 @@ class ComposePreviewParser(
             )
             "Text" -> UiNode.Text(
                 modifier = modifier,
-                text = text ?: "",
+                text = text ?: extractStringArg(args, "__pos0") ?: "",
                 color = args["color"],
                 fontSize = parseNumber(args["fontSize"]),
                 fontWeight = args["fontWeight"],
@@ -613,11 +631,16 @@ class ComposePreviewParser(
             )
             "Scaffold" -> UiNode.Scaffold(
                 modifier = modifier,
-                content = children.firstOrNull()
+                content = children.firstOrNull(),
+                topBar = parseLambdaBody(args["topBar"]),
+                bottomBar = parseLambdaBody(args["bottomBar"])
             )
             "TopAppBar", "CenterAlignedTopAppBar" -> UiNode.TopAppBar(
                 modifier = modifier,
-                title = extractStringArg(args, "title") ?: ""
+                title = extractTextFromLambda(args["title"])
+                    ?: extractStringArg(args, "title")
+                    ?: extractStringArg(args, "__pos0")
+                    ?: ""
             )
             "NavigationBar" -> UiNode.NavigationBar(
                 modifier = modifier,
@@ -626,7 +649,11 @@ class ComposePreviewParser(
             "NavigationBarItem" -> UiNode.NavigationBarItem(
                 modifier = modifier,
                 selected = args["selected"]?.let { it.toBooleanStrictOrNull() } ?: false,
-                label = args["label"] ?: text ?: ""
+                label = extractTextFromLambda(args["label"])
+                    ?: extractStringArg(args, "label")
+                    ?: extractStringArg(args, "__pos0")
+                    ?: text
+                    ?: ""
             )
             "Switch" -> UiNode.Switch(
                 modifier = modifier,
@@ -638,13 +665,14 @@ class ComposePreviewParser(
             )
             "AlertDialog", "Dialog" -> UiNode.Dialog(
                 modifier = modifier,
-                title = extractStringArg(args, "title"),
-                text = extractStringArg(args, "text"),
+                title = extractStringArg(args, "title") ?: extractStringArg(args, "__pos0"),
+                text = extractStringArg(args, "text") ?: extractStringArg(args, "__pos1"),
                 children = children
             )
             "ModalNavigationDrawer" -> UiNode.ModalNavigationDrawer(
                 modifier = modifier,
-                content = children.firstOrNull()
+                content = children.firstOrNull(),
+                drawerContent = parseLambdaBody(args["drawerContent"])
             )
             "ModalDrawerSheet" -> UiNode.ModalDrawerSheet(
                 modifier = modifier,
@@ -658,7 +686,8 @@ class ComposePreviewParser(
             else -> UiNode.Unknown(
                 modifier = modifier,
                 name = name,
-                error = if (children.isNotEmpty() || text != null) null else "Unknown component: $name"
+                error = if (children.isNotEmpty() || text != null) null else "Unknown component: $name",
+                children = children
             )
         }
     }
@@ -676,6 +705,8 @@ class ComposePreviewParser(
 
         while (p < modifierStr.length) {
             p = skipWhitespaceAndComments(modifierStr, p)
+
+            ensureActive()
             if (p >= modifierStr.length || modifierStr[p] != '.') break
 
             p++ // skip '.'
@@ -748,6 +779,8 @@ class ComposePreviewParser(
         var i = start
         var depth = 0
         while (i < length) {
+
+            ensureActive()
             when (this[i]) {
                 '(' -> depth++
                 ')' -> { if (depth == 0) return Pair(substring(start, i), i); depth-- }
@@ -763,6 +796,7 @@ class ComposePreviewParser(
         var i = p
         var depth = 0
         while (i < content.length) {
+            ensureActive()
             when (content[i]) {
                 '(' -> depth++
                 ')' -> { if (depth == 0) return i; depth-- }
@@ -797,6 +831,7 @@ class ComposePreviewParser(
     private fun findStringEnd(content: String, start: Int): Int {
         var i = start + 1
         while (i < content.length) {
+            ensureActive()
             when (content[i]) {
                 '\\' -> i += 2
                 '"' -> return i + 1
@@ -819,14 +854,15 @@ class ComposePreviewParser(
         var i = start
         var depth = 0
         while (i < content.length) {
+            ensureActive()
             when (content[i]) {
                 '(' -> { depth++; i++ }
                 ')' -> {
                     if (depth == 0) return i
                     depth--; i++
                 }
-                ',' -> { if (depth == 0) return i }
-                '}' -> { if (depth == 0) return i }
+                ',' -> { if (depth == 0) return i; i++ }
+                '}' -> { if (depth == 0) return i; i++ }
                 ' ', '\t', '\n', '\r' -> {
                     // Stop at whitespace if we have content before it
                     if (i > start && depth == 0) {
@@ -848,9 +884,74 @@ class ComposePreviewParser(
         return content.length
     }
 
+    /**
+     * Skip a val/var/const declaration to the end of the statement,
+     * handling multi-line blocks like `val x = remember { ... }`.
+     */
+    private fun skipStatementEnd(content: String, start: Int): Int {
+        var i = start
+        var depth = 0
+        var inString = false
+        while (i < content.length) {
+            ensureActive()
+            val ch = content[i]
+            if (inString) {
+                if (ch == '\\') { i += 2; continue }
+                else if (ch == '"') inString = false
+                else if (ch == '$' && i + 1 < content.length && content[i + 1] == '{') {
+                    val braceEnd = findMatchingBrace(content, i + 1)
+                    if (braceEnd != -1) i = braceEnd
+                }
+                i++
+                continue
+            }
+            when {
+                ch == '"' -> inString = true
+                ch == '/' && i + 1 < content.length && content[i + 1] == '/' -> {
+                    val end = content.indexOf('\n', i)
+                    i = if (end == -1) content.length else end
+                }
+                ch == '/' && i + 1 < content.length && content[i + 1] == '*' -> {
+                    val end = content.indexOf("*/", i + 2)
+                    i = if (end == -1) content.length else end + 2
+                    continue
+                }
+                ch == '{' -> depth++
+                ch == '}' -> {
+                    depth--
+                    if (depth < 0) return i + 1
+                }
+                ch == '\n' -> {
+                    if (depth == 0) return i + 1
+                }
+            }
+            i++
+        }
+        return content.length
+    }
+
+    /**
+     * Parse a lambda argument value like `{ Column { ... } }` into its child nodes.
+     * Returns null if the value is not a brace lambda.
+     */
+    private fun parseLambdaBody(argValue: String?): UiNode? {
+        if (argValue == null) return null
+        val trimmed = argValue.trim()
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null
+        val inner = trimmed.substring(1, trimmed.length - 1)
+        // Strip lambda parameter arrow like `{ padding -> ... }`
+        val arrowIdx = inner.indexOf("->")
+        val body = if (arrowIdx != -1 && inner.substring(0, arrowIdx).contains(" ")) {
+            inner.substring(arrowIdx + 2)
+        } else inner
+        val nodes = parseBody(body, 0)
+        return nodes.firstOrNull()
+    }
+
     private fun skipWhitespaceAndComments(content: String, start: Int): Int {
         var i = start
         while (i < content.length) {
+            ensureActive()
             when {
                 content[i] == ' ' || content[i] == '\t' || content[i] == '\n' || content[i] == '\r' -> i++
                 content[i] == '/' && i + 1 < content.length && content[i + 1] == '/' -> {
@@ -884,8 +985,9 @@ class ComposePreviewParser(
         while (i < content.length) {
             val ch = content[i]
 
+            ensureActive()
             if (inString) {
-                if (ch == '\\') i += 2
+                if (ch == '\\') { i += 2; continue }
                 else if (ch == '"') inString = false
                 else if (ch == '$' && i + 1 < content.length && content[i + 1] == '{') {
                     // Skip string template ${...}
@@ -923,6 +1025,7 @@ class ComposePreviewParser(
         var i = start
         var depth = 0
         while (i < content.length) {
+            ensureActive()
             when (content[i]) {
                 '(' -> depth++
                 ')' -> { if (depth == 0) return i; depth-- }
@@ -938,6 +1041,8 @@ class ComposePreviewParser(
     private fun skipToChar(content: String, start: Int, vararg chars: Char): Int {
         var i = start
         while (i < content.length) {
+
+            ensureActive()
             if (content[i] in chars) return i
             i++
         }
@@ -946,7 +1051,10 @@ class ComposePreviewParser(
 
     private fun skipWhitespace(content: String, start: Int): Int {
         var i = start
-        while (i < content.length && (content[i] == ' ' || content[i] == '\t' || content[i] == '\n' || content[i] == '\r')) i++
+        while (i < content.length && (content[i] == ' ' || content[i] == '\t' || content[i] == '\n' || content[i] == '\r')) {
+            ensureActive()
+            i++
+        }
         return i
     }
 
@@ -961,6 +1069,8 @@ class ComposePreviewParser(
         var p = start + 1
         while (p < end) {
             p = skipWhitespaceAndComments(source, p)
+
+            ensureActive()
             if (p >= end) break
             val paramEnd = skipToChars(source, p, ',', ')')
             val param = source.substring(p, min(paramEnd, end)).trim()
@@ -979,7 +1089,7 @@ class ComposePreviewParser(
             ensureActive()
             val ch = content[i]
             if (inString) {
-                if (ch == '\\') i += 2
+                if (ch == '\\') { i += 2; continue }
                 else if (ch == '"') inString = false
                 i++
                 continue
@@ -1020,9 +1130,35 @@ class ComposePreviewParser(
 
     private fun extractTextFromNodeList(children: List<UiNode>): String {
         for (child in children) {
-            if (child is UiNode.Text) return child.text
+            when (child) {
+                is UiNode.Text -> return child.text
+                is UiNode.Column -> extractTextFromNodeList(child.children).takeIf { it.isNotEmpty() }?.let { return it }
+                is UiNode.Row -> extractTextFromNodeList(child.children).takeIf { it.isNotEmpty() }?.let { return it }
+                is UiNode.Box -> extractTextFromNodeList(child.children).takeIf { it.isNotEmpty() }?.let { return it }
+                is UiNode.Surface -> extractTextFromNodeList(child.children).takeIf { it.isNotEmpty() }?.let { return it }
+                is UiNode.Card -> extractTextFromNodeList(child.children).takeIf { it.isNotEmpty() }?.let { return it }
+                is UiNode.Unknown -> extractTextFromNodeList(child.children).takeIf { it.isNotEmpty() }?.let { return it }
+                else -> {}
+            }
         }
         return ""
+    }
+
+    /**
+     * Extract the text of the first Text node inside a lambda argument like
+     * `{ Column { Text("AFFT") } }`. Returns null if none found.
+     */
+    private fun extractTextFromLambda(argValue: String?): String? {
+        if (argValue == null) return null
+        val trimmed = argValue.trim()
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null
+        val inner = trimmed.substring(1, trimmed.length - 1)
+        val arrowIdx = inner.indexOf("->")
+        val body = if (arrowIdx != -1 && inner.substring(0, arrowIdx).contains(" ")) {
+            inner.substring(arrowIdx + 2)
+        } else inner
+        val nodes = parseBody(body, 0)
+        return extractTextFromNodeList(nodes).ifEmpty { null }
     }
 }
 
