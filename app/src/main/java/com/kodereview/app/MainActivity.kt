@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import com.kodereview.app.model.ReferenceFile
 import com.kodereview.app.ui.screen.EditorScreen
 import com.kodereview.app.ui.theme.EditorBackground
 import com.kodereview.app.ui.theme.KodeReviewTheme
@@ -79,6 +80,7 @@ fun KodeReviewApp(
 ) {
     var editorKey by remember { mutableStateOf(0) }
     var currentCode by remember { mutableStateOf<String?>(null) }
+    var refFiles by remember { mutableStateOf<List<ReferenceFile>>(emptyList()) }
 
     // Observe pendingCode changes (from intents)
     LaunchedEffect(pendingCode.value) {
@@ -112,9 +114,57 @@ fun KodeReviewApp(
         }
     }
 
+    // Multi-file picker: add theme/component files as preview references
+    val refPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        val added = mutableListOf<ReferenceFile>()
+        var failed = 0
+        for (uri in uris) {
+            try {
+                val name = displayNameOf(activity.contentResolver, uri) ?: "ref_${added.size + 1}.kt"
+                val text = activity.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                if (!text.isNullOrBlank()) {
+                    added.add(ReferenceFile(name = name, content = text))
+                } else {
+                    failed++
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ref file read error", e)
+                failed++
+            }
+        }
+        if (added.isNotEmpty()) {
+            refFiles = refFiles + added
+            Toast.makeText(
+                activity,
+                "+${added.size} file referensi (ketuk nama file utk hapus)",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+        if (failed > 0) {
+            Toast.makeText(activity, "$failed file gagal dibaca", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     EditorScreen(
         key = editorKey,
         initialCode = currentCode,
+        extraFiles = refFiles,
+        onAddReferenceFiles = {
+            try {
+                refPickerLauncher.launch(arrayOf("*/*"))
+            } catch (e: Exception) {
+                Log.e(TAG, "Ref picker error", e)
+                Toast.makeText(activity, "Cannot open file picker: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        },
+        onRemoveReferenceFile = { index ->
+            if (index in refFiles.indices) {
+                refFiles = refFiles.filterIndexed { i, _ -> i != index }
+            }
+        },
         onPickFile = {
             try {
                 // Use multiple mime types for broad compatibility
@@ -126,3 +176,15 @@ fun KodeReviewApp(
         }
     )
 }
+
+private fun displayNameOf(resolver: android.content.ContentResolver, uri: Uri): String? {
+    return try {
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "Display name error: ${e.message}", e)
+        null
+    }
+}
+

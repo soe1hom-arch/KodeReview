@@ -2,13 +2,18 @@ package com.kodereview.app.ui.screen
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextRange
@@ -17,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kodereview.app.analyzer.AnalyzerEngine
 import com.kodereview.app.model.EditorUiState
+import com.kodereview.app.model.ReferenceFile
 import com.kodereview.app.model.SampleCode
 import com.kodereview.app.ui.screen.components.CodeEditor
 import com.kodereview.app.ui.screen.components.DiagnosticPanel
@@ -32,6 +38,9 @@ fun EditorScreen(
     key: Int = 0,
     initialCode: String? = null,
     onPickFile: (() -> Unit)? = null,
+    extraFiles: List<ReferenceFile> = emptyList(),
+    onAddReferenceFiles: (() -> Unit)? = null,
+    onRemoveReferenceFile: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val analyzerEngine = remember { AnalyzerEngine() }
@@ -115,6 +124,11 @@ fun EditorScreen(
                             Icon(Icons.Default.FolderOpen, "Open .kt", tint = OnSurfaceVariant)
                         }
                     }
+                    if (onAddReferenceFiles != null) {
+                        IconButton(onClick = onAddReferenceFiles) {
+                            Icon(Icons.Default.Add, "Tambah file referensi", tint = OnSurfaceVariant)
+                        }
+                    }
                     IconButton(onClick = { textFieldValue = TextFieldValue(SampleCode.defaultSample) }) {
                         Icon(Icons.Default.Refresh, "Reset", tint = OnSurfaceVariant)
                     }
@@ -153,6 +167,55 @@ fun EditorScreen(
                 )
             }
 
+            // Reference files row (theme/components from other .kt files)
+            if (extraFiles.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(SurfaceVariant.copy(alpha = 0.4f))
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        "Referensi:",
+                        fontSize = 10.sp,
+                        color = OnSurfaceVariant,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+                    extraFiles.forEachIndexed { index, file ->
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(OnSurfaceVariant.copy(alpha = 0.15f))
+                                .clickable { onRemoveReferenceFile?.invoke(index) }
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                file.name,
+                                fontSize = 10.sp,
+                                color = OnSurface,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                maxLines = 1
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("✕", fontSize = 9.sp, color = OnSurfaceVariant)
+                        }
+                    }
+                    if (onAddReferenceFiles != null) {
+                        TextButton(
+                            onClick = onAddReferenceFiles,
+                            contentPadding = PaddingValues(horizontal = 6.dp),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Text("+ File", fontSize = 10.sp, color = PrimaryColor)
+                        }
+                    }
+                }
+            }
+
             // Tab content area
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 when (selectedTab) {
@@ -165,6 +228,7 @@ fun EditorScreen(
                     )
                     1 -> PreviewPanel(
                         sourceCode = textFieldValue.text,
+                        extraSources = extraFiles.map { it.content },
                         modifier = Modifier.fillMaxSize()
                     )
                     2 -> Column(Modifier.fillMaxSize()) {
@@ -178,6 +242,7 @@ fun EditorScreen(
                         Divider(color = SurfaceVariant, thickness = 2.dp)
                         PreviewPanel(
                             sourceCode = textFieldValue.text,
+                            extraSources = extraFiles.map { it.content },
                             modifier = Modifier.fillMaxWidth().weight(0.7f)
                         )
                     }

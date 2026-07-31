@@ -41,21 +41,42 @@ private const val PARSE_TIMEOUT_MS = 4000L
 @Composable
 fun PreviewPanel(
     sourceCode: String,
+    extraSources: List<String> = emptyList(),
     modifier: Modifier = Modifier
 ) {
-    var previewResult by remember(sourceCode) {
+    // Merge the main file with reference files so cross-file composables
+    // (components, theme colors) can be inlined into one preview.
+    val mergedSource = remember(sourceCode, extraSources) {
+        if (extraSources.isEmpty()) {
+            sourceCode
+        } else {
+            buildString {
+                append(sourceCode)
+                if (sourceCode.isBlank() || sourceCode.lastOrNull() != '\n') append('\n')
+                extraSources.forEach { extra ->
+                    append("\n// ===== reference file =====\n")
+                    append(extra)
+                    append('\n')
+                }
+            }
+        }
+    }
+    var previewResult by remember(mergedSource) {
         mutableStateOf<PreviewResult>(PreviewResult.Loading)
     }
-    var composables by remember(sourceCode) {
+    var composables by remember(mergedSource) {
         mutableStateOf<List<ParsedComposable>>(emptyList())
     }
-    var selectedIndex by remember(sourceCode) {
+    var selectedIndex by remember(mergedSource) {
         mutableStateOf(0)
+    }
+    var themeColors by remember(mergedSource) {
+        mutableStateOf<Map<String, String>>(emptyMap())
     }
 
     // Run parser in background with timeout
-    LaunchedEffect(sourceCode) {
-        if (sourceCode.isBlank()) {
+    LaunchedEffect(mergedSource) {
+        if (mergedSource.isBlank()) {
             previewResult = PreviewResult.Empty("No code to preview")
             composables = emptyList()
             return@LaunchedEffect
@@ -67,11 +88,11 @@ fun PreviewPanel(
                     // Pass cancellation check so parser can respond to timeout
                     val ctx = kotlin.coroutines.coroutineContext
                     val isActiveCheck = { ctx[kotlinx.coroutines.Job]?.isActive != false }
-                    val parser = ComposePreviewParser(sourceCode, isActiveCheck, PARSE_TIMEOUT_MS)
+                    val parser = ComposePreviewParser(mergedSource, isActiveCheck, PARSE_TIMEOUT_MS)
                     val allComposables = parser.parseAll()
                     val preview = allComposables.firstOrNull { it.hasPreviewAnnotation }
                         ?: allComposables.firstOrNull()
-                    Pair(allComposables, preview)
+                    Triple(allComposables, preview, parser.colorMap())
                 }
             }
 
@@ -85,7 +106,8 @@ fun PreviewPanel(
                 return@LaunchedEffect
             }
 
-            val (allComposables, composable) = result
+            val (allComposables, composable, colors) = result
+            themeColors = colors
 
             if (allComposables.isEmpty()) {
                 previewResult = PreviewResult.Empty(
@@ -247,7 +269,7 @@ fun PreviewPanel(
                             )
                         }
                         Spacer(Modifier.height(8.dp))
-                        RenderPreviewTree(result.nodes, result.name)
+                        RenderPreviewTree(result.nodes, result.name, themeColors)
                     }
                 }
             }
@@ -260,8 +282,8 @@ fun PreviewPanel(
  * a text fallback of the node tree instead of a blank/crashed panel.
  */
 @Composable
-private fun RenderPreviewTree(nodes: List<UiNode>, name: String) {
-    var showTree by remember(nodes, name) { mutableStateOf(false) }
+private fun RenderPreviewTree(nodes: List<UiNode>, name: String, colors: Map<String, String>) {
+    var showTree by remember(nodes, name, colors) { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -294,7 +316,7 @@ private fun RenderPreviewTree(nodes: List<UiNode>, name: String) {
                     color = MaterialTheme.colorScheme.surface
                 ) {
                     Box(modifier = Modifier.padding(2.dp), contentAlignment = Alignment.TopStart) {
-                        ComposePreviewRenderer.Render(nodes)
+                        ComposePreviewRenderer.Render(nodes, colors)
                     }
                 }
             }

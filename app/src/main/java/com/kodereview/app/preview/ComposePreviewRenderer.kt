@@ -28,16 +28,24 @@ import com.kodereview.app.model.*
 @OptIn(ExperimentalMaterial3Api::class)
 object ComposePreviewRenderer {
 
+    /** Theme color registry (identifier -> Color expression) used by parseColor. */
+    private var activeColors: Map<String, String> = emptyMap()
+
     @Composable
-    fun Render(nodes: List<UiNode>): Unit {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-        ) {
-            nodes.forEach { node ->
-                RenderNode(node)
+    fun Render(nodes: List<UiNode>, colors: Map<String, String> = emptyMap()): Unit {
+        activeColors = colors
+        try {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+            ) {
+                nodes.forEach { node ->
+                    RenderNode(node)
+                }
             }
+        } finally {
+            activeColors = emptyMap()
         }
     }
 
@@ -568,15 +576,26 @@ object ComposePreviewRenderer {
             node.children.forEach { RenderNode(it) }
             return
         }
-        Column(modifier = buildModifier(node.modifier)) {
-            Text(
-                text = "<${node.name} />",
-                modifier = Modifier.padding(vertical = 2.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace
-            )
-            node.children.forEach { RenderNode(it) }
+        // Component not found (usually defined in another file) — show a hint.
+        Surface(
+            modifier = buildModifier(node.modifier).padding(vertical = 2.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            shape = RoundedCornerShape(6.dp)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) {
+                Text(
+                    text = "<${node.name} />",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Komponen dari file lain — tambahkan file referensinya",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
         }
     }
 
@@ -663,6 +682,19 @@ object ComposePreviewRenderer {
 
     @Composable private fun parseColor(colorStr: String?): Color? {
         if (colorStr == null) return null
+        val trimmed = colorStr.trim()
+        // 1) Direct lookup in the theme color registry (e.g. "TerminalBackground").
+        if (trimmed.isNotEmpty()) {
+            activeColors[trimmed]?.let { return parseColor(it) }
+        }
+        // 2) Expressions like `if (a) Green else Red` — resolve each identifier
+        //    against the registry and use the first hit.
+        if (trimmed.contains(" if ") || trimmed.contains(" else ")) {
+            val identifiers = Regex("""\b[A-Za-z_]\w*\b""").findAll(trimmed).map { it.value }
+            for (id in identifiers) {
+                activeColors[id]?.let { return parseColor(it) }
+            }
+        }
         return when {
             colorStr == "Color.Red" || colorStr == "Red" -> Color.Red
             colorStr == "Color.Blue" || colorStr == "Blue" -> Color.Blue

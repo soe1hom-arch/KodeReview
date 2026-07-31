@@ -20,6 +20,9 @@ class ComposePreviewParser(
     /** Custom composables found in this source, keyed by lowercased name. */
     private var customComposables: Map<String, ParsedComposable> = emptyMap()
 
+    /** Theme color values extracted from source (e.g. val TerminalBackground = Color(0xFF...)). */
+    private var colorRegistry: Map<String, String> = emptyMap()
+
     /** Current custom-composable inlining depth (prevents infinite recursion). */
     private var inlineDepth = 0
 
@@ -29,7 +32,7 @@ class ComposePreviewParser(
     private fun ensureActive() {
         if (!isActive()) throw kotlinx.coroutines.CancellationException("Parser cancelled")
         parseIterations++
-        if (parseIterations > 2_000_000) {
+        if (parseIterations > 5_000_000) {
             throw IllegalStateException("Parser exceeded maximum iteration limit")
         }
         if (deadlineNanos > 0L && System.nanoTime() > deadlineNanos) {
@@ -79,7 +82,25 @@ class ComposePreviewParser(
         "collect", "launch", "delay", "updatestate", "rememberupdatedstate"
     )
 
+    /**
+     * Extract top-level color val declarations (theme files), e.g.
+     * val TerminalBackground = Color(0xFF1A1A2E)
+     * Also matches inline Color(...) declarations anywhere for completeness.
+     */
+    fun extractColors(): Map<String, String> {
+        val colors = LinkedHashMap<String, String>()
+        val regex = Regex("""(?m)^\s*val\s+(\w+)\s*=\s*(Color\([^)]*\)|0x[0-9a-fA-F]{6,8})""")
+        for (match in regex.findAll(source)) {
+            colors[match.groupValues[1]] = match.groupValues[2]
+        }
+        return colors
+    }
+
+    /** Theme color map extracted from the source (identifier -> Color expression). */
+    fun colorMap(): Map<String, String> = colorRegistry
+
     fun parseAll(): List<ParsedComposable> {
+        colorRegistry = extractColors()
         // Pass 1: parse without inlining to discover all custom composables.
         val firstPass = parseAllRaw()
         if (firstPass.isEmpty()) return firstPass
