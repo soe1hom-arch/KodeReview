@@ -16,12 +16,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kodereview.app.analyzer.AnalyzerEngine
 import com.kodereview.app.model.EditorUiState
+import com.kodereview.app.model.KotlinProjectIndex
+import com.kodereview.app.model.ProjectFile
 import com.kodereview.app.model.ReferenceFile
 import com.kodereview.app.model.SampleCode
 import com.kodereview.app.ui.screen.components.CodeEditor
@@ -41,6 +44,9 @@ fun EditorScreen(
     extraFiles: List<ReferenceFile> = emptyList(),
     onAddReferenceFiles: (() -> Unit)? = null,
     onRemoveReferenceFile: ((Int) -> Unit)? = null,
+    projectFiles: List<ProjectFile> = emptyList(),
+    folderStatus: String? = null,
+    onPickFolder: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val analyzerEngine = remember { AnalyzerEngine() }
@@ -51,6 +57,21 @@ fun EditorScreen(
     var showDiagnostics by remember { mutableStateOf(true) }
     var selectedTab by remember { mutableStateOf(0) }
     var analysisCounter by remember { mutableStateOf(0) }
+    var autoFiles by remember(projectFiles) { mutableStateOf<List<ReferenceFile>>(emptyList()) }
+    val context = LocalContext.current
+
+    // Auto-resolve: load theme/component files referenced by the current code's imports.
+    LaunchedEffect(textFieldValue.text, projectFiles) {
+        autoFiles = if (projectFiles.isEmpty()) {
+            emptyList()
+        } else {
+            // Debounce so we don't re-read files on every keystroke.
+            delay(400)
+            withContext(Dispatchers.IO) {
+                KotlinProjectIndex.resolveReferences(context, textFieldValue.text, projectFiles)
+            }
+        }
+    }
 
     // Run analysis when code changes
     LaunchedEffect(textFieldValue.text) {
@@ -129,6 +150,11 @@ fun EditorScreen(
                             Icon(Icons.Default.Add, "Tambah file referensi", tint = OnSurfaceVariant)
                         }
                     }
+                    if (onPickFolder != null) {
+                        IconButton(onClick = onPickFolder) {
+                            Icon(Icons.Default.Folder, "Buka folder proyek", tint = OnSurfaceVariant)
+                        }
+                    }
                     IconButton(onClick = { textFieldValue = TextFieldValue(SampleCode.defaultSample) }) {
                         Icon(Icons.Default.Refresh, "Reset", tint = OnSurfaceVariant)
                     }
@@ -167,50 +193,95 @@ fun EditorScreen(
                 )
             }
 
-            // Reference files row (theme/components from other .kt files)
-            if (extraFiles.isNotEmpty()) {
-                Row(
+            // Reference files row (auto-resolved + manual)
+            if (extraFiles.isNotEmpty() || autoFiles.isNotEmpty() || folderStatus != null || onAddReferenceFiles != null) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(SurfaceVariant.copy(alpha = 0.4f))
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text(
-                        "Referensi:",
-                        fontSize = 10.sp,
-                        color = OnSurfaceVariant,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                    )
-                    extraFiles.forEachIndexed { index, file ->
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(OnSurfaceVariant.copy(alpha = 0.15f))
-                                .clickable { onRemoveReferenceFile?.invoke(index) }
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                    folderStatus?.let {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("📂 ", fontSize = 10.sp)
                             Text(
-                                file.name,
+                                it,
                                 fontSize = 10.sp,
-                                color = OnSurface,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                maxLines = 1
+                                color = OnSurfaceVariant,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                             )
-                            Spacer(Modifier.width(4.dp))
-                            Text("✕", fontSize = 9.sp, color = OnSurfaceVariant)
                         }
                     }
-                    if (onAddReferenceFiles != null) {
-                        TextButton(
-                            onClick = onAddReferenceFiles,
-                            contentPadding = PaddingValues(horizontal = 6.dp),
-                            modifier = Modifier.height(26.dp)
+                    if (autoFiles.isNotEmpty() || extraFiles.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text("+ File", fontSize = 10.sp, color = PrimaryColor)
+                            if (autoFiles.isNotEmpty()) {
+                                Text(
+                                    "Auto:",
+                                    fontSize = 10.sp,
+                                    color = InfoColor,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                )
+                                autoFiles.forEach { file ->
+                                    Row(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(InfoColor.copy(alpha = 0.12f))
+                                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            file.name,
+                                            fontSize = 10.sp,
+                                            color = OnSurface,
+                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                            if (extraFiles.isNotEmpty()) {
+                                Text(
+                                    "Manual:",
+                                    fontSize = 10.sp,
+                                    color = WarningColor,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                )
+                                extraFiles.forEachIndexed { index, file ->
+                                    Row(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(OnSurfaceVariant.copy(alpha = 0.15f))
+                                            .clickable { onRemoveReferenceFile?.invoke(index) }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            file.name,
+                                            fontSize = 10.sp,
+                                            color = OnSurface,
+                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                            maxLines = 1
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("✕", fontSize = 9.sp, color = OnSurfaceVariant)
+                                    }
+                                }
+                            }
+                            if (onAddReferenceFiles != null) {
+                                TextButton(
+                                    onClick = onAddReferenceFiles,
+                                    contentPadding = PaddingValues(horizontal = 6.dp),
+                                    modifier = Modifier.height(26.dp)
+                                ) {
+                                    Text("+ File", fontSize = 10.sp, color = PrimaryColor)
+                                }
+                            }
                         }
                     }
                 }
@@ -228,7 +299,7 @@ fun EditorScreen(
                     )
                     1 -> PreviewPanel(
                         sourceCode = textFieldValue.text,
-                        extraSources = extraFiles.map { it.content },
+                        extraSources = (autoFiles + extraFiles).distinctBy { it.name }.map { it.content },
                         modifier = Modifier.fillMaxSize()
                     )
                     2 -> Column(Modifier.fillMaxSize()) {
@@ -242,7 +313,7 @@ fun EditorScreen(
                         Divider(color = SurfaceVariant, thickness = 2.dp)
                         PreviewPanel(
                             sourceCode = textFieldValue.text,
-                            extraSources = extraFiles.map { it.content },
+                            extraSources = (autoFiles + extraFiles).distinctBy { it.name }.map { it.content },
                             modifier = Modifier.fillMaxWidth().weight(0.7f)
                         )
                     }

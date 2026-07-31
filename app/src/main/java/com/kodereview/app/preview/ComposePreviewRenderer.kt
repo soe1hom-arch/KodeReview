@@ -589,7 +589,7 @@ object ComposePreviewRenderer {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Komponen dari file lain — tambahkan file referensinya",
+                    text = "Komponen dari file lain — buka folder proyek atau tambahkan file referensi",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall
                 )

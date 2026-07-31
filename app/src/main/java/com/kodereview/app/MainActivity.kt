@@ -15,8 +15,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import com.kodereview.app.model.KotlinProjectIndex
+import com.kodereview.app.model.ProjectFile
 import com.kodereview.app.model.ReferenceFile
 import com.kodereview.app.ui.screen.EditorScreen
+import kotlinx.coroutines.launch
 import com.kodereview.app.ui.theme.EditorBackground
 import com.kodereview.app.ui.theme.KodeReviewTheme
 
@@ -81,6 +84,9 @@ fun KodeReviewApp(
     var editorKey by remember { mutableStateOf(0) }
     var currentCode by remember { mutableStateOf<String?>(null) }
     var refFiles by remember { mutableStateOf<List<ReferenceFile>>(emptyList()) }
+    var projectFiles by remember { mutableStateOf<List<ProjectFile>>(emptyList()) }
+    var folderStatus by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     // Observe pendingCode changes (from intents)
     LaunchedEffect(pendingCode.value) {
@@ -148,10 +154,48 @@ fun KodeReviewApp(
         }
     }
 
+    // Project folder picker: index all .kt files, then auto-resolve imports
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                activity.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                Log.d(TAG, "Persist permission: ${e.message}")
+            }
+            val folderName = displayNameOf(activity.contentResolver, uri) ?: "proyek"
+            folderStatus = "Memindai folder $folderName…"
+            Toast.makeText(activity, "Memindai folder…", Toast.LENGTH_SHORT).show()
+            scope.launch {
+                val files = KotlinProjectIndex.build(activity, uri)
+                projectFiles = files
+                folderStatus = "Folder $folderName · ${files.size} file .kt (auto)"
+                Toast.makeText(
+                    activity,
+                    "Folder dimuat: ${files.size} file .kt",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
     EditorScreen(
         key = editorKey,
         initialCode = currentCode,
         extraFiles = refFiles,
+        projectFiles = projectFiles,
+        folderStatus = folderStatus,
+        onPickFolder = {
+            try {
+                folderPickerLauncher.launch(null)
+            } catch (e: Exception) {
+                Log.e(TAG, "Folder picker error", e)
+                Toast.makeText(activity, "Cannot open folder picker: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        },
         onAddReferenceFiles = {
             try {
                 refPickerLauncher.launch(arrayOf("*/*"))
