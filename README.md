@@ -1,121 +1,74 @@
-# KodeReview — Live Kotlin & Compose Code Reviewer + Live Preview
+# KodeReview (Archived)
 
-An Android app that performs **real-time code review** AND **live Compose UI preview** directly on your device.
+> Status: **Archived** — 2026-07-31. Pengembangan dihentikan karena fitur "live preview
+> ala Android Studio" (kompilasi Kotlin/Compose di perangkat) tidak dapat berjalan stabil
+> di Android. Repo dipertahankan apa adanya agar tidak terbuang sia-sia; sebagian besar
+> kode editor/analyzer/parser masih layak dipakai ulang di proyek lain.
 
-## ✨ Features
+Android app untuk **mereview kode Kotlin & Jetpack Compose** langsung di HP:
+editor dengan syntax highlighting, analisis statis 7 rules, panel diagnostik, file
+picker, dan percobaan live preview Compose.
 
-### 🔍 Live Code Review
-- **Real-time Analysis** — Type code and get instant feedback with 500ms debounce
-- **7+ Detection Rules** — Covers Compose best practices and Kotlin conventions
-- **Inline Diagnostics** — Squiggly underlines, line number indicators with color-coded severity, full diagnostic panel
-- **Syntax Highlighting** — Custom regex-based Kotlin highlighter with Catppuccin Mocha theme
+## Status Fitur (per commit terakhir `5c05d52`)
 
-### 🎨 Live Compose Preview
-- **Parse → Render Pipeline** — Extracts UI tree from source and renders it as live Compose UI
-- **15+ Components Supported** — Column, Row, Box, Text, Button, Card, Surface, LazyColumn, and more
-- **Modifier Support** — padding, size, fillMaxWidth, background, border, weight, clip, clickable, and more
-- **Split View** — See code and preview side-by-side simultaneously
+| Fitur | Status | Keterangan |
+|-------|--------|------------|
+| Code editor + syntax highlighting (Catppuccin Mocha) | ✅ Berfungsi | Regex-based, tanpa dependency compiler |
+| Live analysis 7 rules + diagnostic panel color-coded | ✅ Berfungsi | 500ms debounce, gutter + panel |
+| 3 tab: Code / Preview / Split | ✅ Berfungsi | — |
+| File picker `.kt` dari storage + open via Intent | ✅ Berfungsi | — |
+| Preview parser statis (`ComposePreviewParser` → `UiNode` → render) | ⚠️ Terbatas | Render perkiraan struktur UI, jauh dari tampilan asli; tidak dipakai sebagai fitur utama |
+| Live compile on-device (`LiveCompiler`: K2JVMCompiler + D8 + `InMemoryDexClassLoader`) | ❌ Gagal di perangkat | Valid di JVM (harness `/tmp/composetest`), tapi di Android masih error; APK jadi ±160 MB |
 
-**How it works:**
-```
-Source Code → ComposePreviewParser (recursive descent) → UiNode Tree → ComposeRenderer → Live Compose UI
-```
+## Ringkasan Percobaan "Live Compile" (biar yang lanjut tidak mengulang)
 
-## 🔍 Detection Rules
+- Pipeline: `kotlin-compiler-embeddable 1.9.20` + Compose plugin `1.5.4` → D8 `8.2.33`
+  in-process → `InMemoryDexClassLoader` → invoke composable sebagai
+  `Function2<Composer, Int, Unit>` → render dengan `ComposeView.setContent`.
+- **Fix `PathUtil` INTERNAL_ERROR**: resource lookup jar compiler tidak bisa bekerja di
+  Android (class ada di dex). Solusinya meneruskan `-kotlin-home` ke folder berisi jar
+  asli (`kotlin-compiler.jar`, `kotlin-stdlib.jar`, `kotlin-reflect.jar`,
+  `kotlin-script-runtime.jar`, `trove4j.jar`) yang disalin ke assets saat build
+  (lihat `app/build.gradle.kts` → task `prepareLivePreviewAssets`).
+- `gradle.properties` butuh heap besar (`-Xmx4096m`) karena aset compiler bikin
+  `compressDebugAssets` OOM di heap 2 GB.
+- Kendala tersisa yang tidak sempat dituntaskan: error runtime D8/ART di perangkat
+  setelah `-kotlin-home` diterapkan.
 
-| Rule | Category | Description |
-|------|----------|-------------|
-| Composable Naming | Compose | `@Composable` functions must use PascalCase |
-| Modifier Order | Compose | Size modifiers before padding modifiers |
-| Remember Usage | Compose | Proper `remember {}` key usage |
-| State Hoisting | Compose | Suggest hoisting state for reusability |
-| Naming Convention | Kotlin | PascalCase for classes, camelCase for functions |
-| Expression Body | Kotlin | Single-expression function syntax |
-| Unused Import | Kotlin | Detect potentially unused imports |
+## Build
 
-## 🖥️ Supported Preview Components
+### GitHub Actions (cara yang dipakai)
+Push ke branch `main` → workflow `build.yml` otomatis build `assembleDebug`.
+APK di tab **Actions** → run terakhir → artifact **KodeReview-APK**.
 
-**Layouts:** Column, Row, Box, Surface, Card, Scaffold
-**Elements:** Text, Button, OutlinedButton, TextButton, Icon, Image, Spacer, Divider
-**Indicators:** CircularProgressIndicator, LinearProgressIndicator
-**Lists:** LazyColumn, LazyRow (simplified)
-
-**Modifiers:** size, width, height, padding, fillMaxWidth/Height/Size, weight, background, clip, border, clickable, offset, alpha, zIndex, rotate, scale, defaultMinSize, widthIn, heightIn
-
-## 🛠️ Tech Stack
-
-- **Kotlin** + **Jetpack Compose** (Material 3)
-- **Custom Syntax Highlighter** — regex-based tokenization (no compiler dependency needed)
-- **Custom Recursive Descent Parser** for Compose UI tree extraction
-- Android SDK 34, Min SDK 26
-- Build with GitHub Actions CI/CD
-
-## 📱 Usage
-
-1. **Open the app** — sample code is pre-loaded with issues to demonstrate
-2. **Code tab** — write/edit Kotlin with real-time syntax highlighting and analysis
-3. **Preview tab** — see live rendered Compose UI from your code
-4. **Split tab** — code and preview side by side
-5. **Open .kt files** — tap the folder icon to browse and open Kotlin files from device storage
-6. **Tap issues in gutter** — jump directly to error lines
-7. **Diagnostic panel** — scrollable bottom panel with issue details and suggestions
-8. **Reset** — load the sample code anytime with refresh button
-
-## 🚀 Build & Download
-
-### GitHub Actions (recommended)
-Push to GitHub — workflow builds APK automatically.
-Download the latest APK from the **Actions** tab → select latest run → **KodeReview-APK** artifact.
-
-### Local build
+### Lokal
 ```bash
 git clone https://github.com/soe1hom-arch/KodeReview
 cd KodeReview
 ./gradlew assembleDebug
-# APK at: app/build/outputs/apk/debug/app-debug.apk
+# APK: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## 🏗️ Architecture
+## Struktur
 
 ```
-┌──────────────────────────────────────────┐
-│  UI (Jetpack Compose)                    │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ │
-│  │ Editor   │ │Preview   │ │Diagnostic│ │
-│  │ (Code)   │ │(Render)  │ │ Panel    │ │
-│  └────┬─────┘ └────┬─────┘ └──────────┘ │
-└───────┼─────────────┼────────────────────┘
-        │             │
-┌───────┴──────┐ ┌────┴──────────────┐
-│ Analyzer     │ │ Preview Parser    │
-│ Engine       │ │ (Recursive        │
-│ (Custom      │ │  Descent)         │
-│  Rules)      │ │ → UiNode Tree     │
-└──────────────┘ └───────────────────┘
+app/src/main/java/com/kodereview/app/
+├── MainActivity.kt                     # Entry point + file picker + Intent
+├── ui/screen/EditorScreen.kt           # Tabs: Code / Preview / Split
+├── ui/screen/components/
+│   ├── CodeEditor.kt                   # Syntax-highlighted editor
+│   ├── DiagnosticPanel.kt              # Panel issue (severity color-coded)
+│   └── PreviewPanel.kt                 # Panel preview + tombol ⚡ Live
+├── highlighter/KotlinSyntaxHighlighter.kt
+├── analyzer/                           # 7 rules static analysis
+├── preview/                            # Parser + renderer statis
+│   ├── ComposePreviewParser.kt         # Recursive descent → UiNode tree
+│   └── ComposePreviewRenderer.kt       # UiNode → Compose UI
+├── live/LiveCompiler.kt                # Eksperimen kompilasi on-device (❌)
+└── model/                              # Data models + sample code
 ```
 
-## 📁 Project Structure
+## Stack
 
-```
-CodeReviewApp/
-├── .github/workflows/build.yml         ← GitHub Actions CI
-├── app/src/main/java/com/kodereview/app/
-│   ├── MainActivity.kt                 ← Entry point + file picker
-│   ├── ui/
-│   │   ├── theme/                      ← Catppuccin Mocha dark theme
-│   │   └── screen/
-│   │       ├── EditorScreen.kt         ← Tabs: Code / Preview / Split
-│   │       └── components/
-│   │           ├── CodeEditor.kt       ← Syntax-highlighted editor
-│   │           ├── DiagnosticPanel.kt  ← Bottom issues panel
-│   │           └── PreviewPanel.kt     ← Live Compose preview
-│   ├── highlighter/
-│   │   └── KotlinSyntaxHighlighter.kt  ← Regex-based highlighter
-│   ├── analyzer/                       ← Static analysis engine + rules
-│   ├── preview/
-│   │   ├── ComposePreviewParser.kt     ← Recursive descent parser
-│   │   └── ComposePreviewRenderer.kt   ← UiNode → Compose rendering
-│   └── model/                          ← Data models
-└── build files
-```
-
+Kotlin 1.9.20 · Jetpack Compose (Material 3, BOM 2024.01.00) · AGP 8.2.0 ·
+minSdk 26 / targetSdk 34 · GitHub Actions CI
