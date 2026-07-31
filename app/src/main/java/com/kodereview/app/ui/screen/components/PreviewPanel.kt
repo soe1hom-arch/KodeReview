@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -251,6 +252,9 @@ fun PreviewPanel(
                     }
                 }
                 is PreviewResult.Success -> {
+                    val previewScheme = remember(themeColors) {
+                        buildPreviewColorScheme(themeColors)
+                    }
                     Column(modifier = Modifier.padding(8.dp)) {
                         Row(
                             modifier = Modifier
@@ -267,7 +271,7 @@ fun PreviewPanel(
                             )
                         }
                         Spacer(Modifier.height(8.dp))
-                        RenderPreviewTree(result.nodes, result.name, themeColors)
+                        RenderPreviewTree(result.nodes, result.name, themeColors, previewScheme)
                     }
                 }
             }
@@ -280,7 +284,12 @@ fun PreviewPanel(
  * a text fallback of the node tree instead of a blank/crashed panel.
  */
 @Composable
-private fun RenderPreviewTree(nodes: List<UiNode>, name: String, colors: Map<String, String>) {
+private fun RenderPreviewTree(
+    nodes: List<UiNode>,
+    name: String,
+    colors: Map<String, String>,
+    scheme: ColorScheme
+) {
     var showTree by remember(nodes, name, colors) { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -305,7 +314,7 @@ private fun RenderPreviewTree(nodes: List<UiNode>, name: String, colors: Map<Str
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
             )
         } else {
-            MaterialTheme(colorScheme = MaterialTheme.colorScheme) {
+            MaterialTheme(colorScheme = scheme) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -320,6 +329,52 @@ private fun RenderPreviewTree(nodes: List<UiNode>, name: String, colors: Map<Str
             }
         }
     }
+}
+
+/**
+ * Parses a color literal expression like `Color(0xFF20E39B)` or `0xFF20E39B`.
+ * Returns null when the expression does not contain a hex color.
+ */
+private fun parseColorLiteral(expr: String): Color? {
+    val match = Regex("""0[xX]([0-9a-fA-F]{6,8})""").find(expr) ?: return null
+    val hex = match.groupValues[1]
+    val value = hex.toLong(16)
+    return if (hex.length == 8) {
+        Color(value)
+    } else {
+        Color(0xFF000000L or value)
+    }
+}
+
+/**
+ * Synthesizes a Material color scheme from the theme colors extracted from the
+ * previewed source (e.g. AFFT's Green500 / DarkBackground / Red500), so that
+ * `MaterialTheme.colorScheme.*` references and component defaults render with
+ * the app's real colors instead of KodeReview's own theme.
+ */
+@Composable
+private fun buildPreviewColorScheme(colors: Map<String, String>): ColorScheme {
+    if (colors.isEmpty()) return MaterialTheme.colorScheme
+    fun pick(vararg keys: String): Color? =
+        keys.firstNotNullOfOrNull { key -> colors[key]?.let(::parseColorLiteral) }
+
+    val def = MaterialTheme.colorScheme
+    return darkColorScheme(
+        primary = pick("Green500", "PrimaryColor", "Primary", "ColorPrimary") ?: def.primary,
+        secondary = pick("Cyan500", "SecondaryColor", "Secondary") ?: def.secondary,
+        tertiary = pick("Yellow500", "TertiaryColor", "Tertiary") ?: def.tertiary,
+        background = pick("DarkBackground", "BackgroundColor", "EditorBackground", "Background") ?: def.background,
+        surface = pick("DarkSurface", "SurfaceColor", "Surface") ?: def.surface,
+        surfaceVariant = pick("DarkSurface2", "SurfaceVariant", "TerminalBackground", "SurfaceColorVariant") ?: def.surfaceVariant,
+        error = pick("Red500", "ErrorColor", "TerminalError") ?: def.error,
+        onPrimary = pick("OnPrimary", "White") ?: def.onPrimary,
+        onSecondary = pick("OnSecondary", "White") ?: def.onSecondary,
+        onBackground = pick("OnBackground", "White") ?: def.onBackground,
+        onSurface = pick("OnSurface", "TerminalText", "White") ?: def.onSurface,
+        onSurfaceVariant = pick("OnSurfaceVariant", "TerminalInfo", "White") ?: def.onSurfaceVariant,
+        onError = pick("OnError", "White") ?: def.onError,
+        outline = pick("Outline", "Green700") ?: def.outline
+    )
 }
 
 private fun treeDump(nodes: List<UiNode>, indent: String = ""): String {

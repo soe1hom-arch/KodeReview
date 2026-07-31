@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -32,18 +34,45 @@ object ComposePreviewRenderer {
     /** Theme color registry (identifier -> Color expression) used by parseColor. */
     private var activeColors: Map<String, String> = emptyMap()
 
+    /**
+     * True while rendering children of a vertically scrollable container.
+     * Used to suppress layout modifiers (fillMaxHeight/fillMaxSize/weight)
+     * that would otherwise crash with an infinite height constraint.
+     */
+    private val LocalInScroll = staticCompositionLocalOf { false }
+
     @Composable
     fun Render(nodes: List<UiNode>, colors: Map<String, String> = emptyMap()): Unit {
         // Preview panel is single-instance, so setting the registry before
         // composition is safe; it is only read during this render pass.
         activeColors = colors
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-        ) {
-            nodes.forEach { node ->
-                RenderNode(node)
+        // Full-screen layouts (Scaffold / drawer) get a bounded viewport so
+        // topBar/content/bottomBar lay out like a real phone screen. Everything
+        // else is rendered as a scrollable document so tall content is never
+        // clipped and the user can always scroll to see it all.
+        val fullScreen = nodes.any { it is UiNode.Scaffold || it is UiNode.ModalNavigationDrawer }
+        if (fullScreen) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+            ) {
+                nodes.forEach { node ->
+                    RenderNode(node)
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(8.dp)
+            ) {
+                CompositionLocalProvider(LocalInScroll provides true) {
+                    nodes.forEach { node ->
+                        RenderNode(node)
+                    }
+                }
             }
         }
     }
@@ -110,8 +139,9 @@ object ComposePreviewRenderer {
             verticalArrangement = verticalArrangement,
             horizontalAlignment = horizontalAlignment
         ) {
+            val inScroll = LocalInScroll.current
             node.children.forEach { child ->
-                val weight = child.modifier.entries
+                val weight = if (inScroll) null else child.modifier.entries
                     .filterIsInstance<ModifierEntry.Weight>()
                     .firstOrNull()?.weight?.value
                 if (weight != null) {
@@ -154,8 +184,9 @@ object ComposePreviewRenderer {
             horizontalArrangement = horizontalArrangement,
             verticalAlignment = verticalAlignment
         ) {
+            val inScroll = LocalInScroll.current
             node.children.forEach { child ->
-                val weight = child.modifier.entries
+                val weight = if (inScroll) null else child.modifier.entries
                     .filterIsInstance<ModifierEntry.Weight>()
                     .firstOrNull()?.weight?.value
                 if (weight != null) {
@@ -381,11 +412,17 @@ object ComposePreviewRenderer {
 
     @Composable
     private fun RenderLazyColumn(node: UiNode.LazyColumn) {
+        // Inside a scrollable document a nested scrollable is illegal
+        // (infinite height constraints); the items are simply stacked.
+        val inScroll = LocalInScroll.current
+        val base = buildModifier(node.modifier)
         Column(
-            modifier = buildModifier(node.modifier)
-                .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            modifier = if (inScroll) base
+            else base.verticalScroll(androidx.compose.foundation.rememberScrollState())
         ) {
-            node.items.forEach { RenderNode(it) }
+            CompositionLocalProvider(LocalInScroll provides true) {
+                node.items.forEach { RenderNode(it) }
+            }
         }
     }
 
@@ -395,7 +432,9 @@ object ComposePreviewRenderer {
             modifier = buildModifier(node.modifier)
                 .horizontalScroll(androidx.compose.foundation.rememberScrollState())
         ) {
-            node.items.forEach { RenderNode(it) }
+            CompositionLocalProvider(LocalInScroll provides true) {
+                node.items.forEach { RenderNode(it) }
+            }
         }
     }
 
@@ -403,22 +442,34 @@ object ComposePreviewRenderer {
 
     @Composable
     private fun RenderScaffold(node: UiNode.Scaffold) {
+        val inScroll = LocalInScroll.current
         // A real Scaffold needs a *bounded* height to lay out topBar/content/
         // bottomBar. Replicate that with a plain Column instead of material3
         // Scaffold, so the preview viewport behaves like a phone screen:
         // topBar on top, content filling the rest, bottomBar pinned at bottom.
+        // When measured inside an unbounded (scrollable) context, fall back to
+        // a simple vertical stack so nothing crashes and nothing is clipped.
         Column(
             modifier = buildModifier(node.modifier)
                 .fillMaxWidth()
-                .fillMaxHeight()
+                .then(if (inScroll) Modifier else Modifier.fillMaxHeight())
         ) {
             node.topBar?.let { RenderNode(it) }
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            ) {
-                node.content?.let { RenderNode(it) }
+            if (inScroll) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    node.content?.let { RenderNode(it) }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    CompositionLocalProvider(LocalInScroll provides true) {
+                        node.content?.let { RenderNode(it) }
+                    }
+                }
             }
             node.bottomBar?.let { RenderNode(it) }
         }
@@ -699,8 +750,10 @@ object ComposePreviewRenderer {
         for (entry in modifier.entries) {
             m = when (entry) {
                 is ModifierEntry.FillMaxWidth -> m.fillMaxWidth()
-                is ModifierEntry.FillMaxHeight -> m.fillMaxHeight()
-                is ModifierEntry.FillMaxSize -> m.fillMaxSize()
+                is ModifierEntry.FillMaxHeight ->
+                    if (LocalInScroll.current) m else m.fillMaxHeight()
+                is ModifierEntry.FillMaxSize ->
+                    if (LocalInScroll.current) m.fillMaxWidth() else m.fillMaxSize()
                 is ModifierEntry.Width -> m.width(parseNumberToDp(entry.value))
                 is ModifierEntry.Height -> m.height(parseNumberToDp(entry.value))
                 is ModifierEntry.Size -> {

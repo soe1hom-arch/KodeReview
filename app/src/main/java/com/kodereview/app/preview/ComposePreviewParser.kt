@@ -316,6 +316,17 @@ class ComposePreviewParser(
                 continue
             }
 
+            // Local function declarations inside the composable body
+            // (fun / suspend fun / inline fun) - skip header + body entirely
+            // so that their closing '}' does not end the enclosing body.
+            if ((ch == 'f' && content.regionMatches(p, "fun ", 0, 4)) ||
+                (ch == 's' && content.regionMatches(p, "suspend ", 0, 8)) ||
+                (ch == 'i' && content.regionMatches(p, "inline ", 0, 7))
+            ) {
+                p = skipLocalFunction(content, p)
+                continue
+            }
+
             // Control flow: when / if are parsed for preview; for / while / try are skipped
             if (isControlFlowStart(content, p)) {
                 when (controlFlowKind(content, p)) {
@@ -1301,13 +1312,82 @@ class ComposePreviewParser(
     }
 
     /**
-     * Skip a val/var/const declaration to the end of the statement,
-     * handling multi-line blocks like `val x = remember { ... }`.
+     * Skip a local function declaration inside a composable body, e.g.
+     *   suspend fun refreshFiles(dir: File) = withContext(Dispatchers.IO) { ... }
+     * Returns the index just past the function body (or the statement when the
+     * function has no brace body), so the enclosing body keeps being parsed.
      */
+    private fun skipLocalFunction(content: String, start: Int): Int {
+        var i = start
+        var parenDepth = 0
+        var inString = false
+        var lineHasContent = false
+        var lineEndsContinuation = false
+        fun mark(ch: Char) {
+            lineHasContent = true
+            lineEndsContinuation = ch in "=({,.:+-*/%!<>&|?"
+        }
+        while (i < content.length) {
+            ensureActive()
+            val ch = content[i]
+            if (inString) {
+                if (ch == '\\') { i += 2; continue }
+                else if (ch == '"') inString = false
+                i++
+                continue
+            }
+            when {
+                ch == '"' -> {
+                    inString = true
+                    mark(ch)
+                }
+                ch == '/' && i + 1 < content.length && content[i + 1] == '/' -> {
+                    val end = content.indexOf('\n', i)
+                    i = if (end == -1) content.length else end
+                    continue
+                }
+                ch == '/' && i + 1 < content.length && content[i + 1] == '*' -> {
+                    val end = content.indexOf("*/", i + 2)
+                    i = if (end == -1) content.length else end + 2
+                    continue
+                }
+                ch == '(' -> {
+                    parenDepth++
+                    mark(ch)
+                }
+                ch == ')' -> {
+                    if (parenDepth > 0) parenDepth--
+                    mark(ch)
+                }
+                ch == '{' && parenDepth == 0 -> {
+                    val end = findMatchingBrace(content, i)
+                    return if (end == -1) content.length else end + 1
+                }
+                ch == '\n' -> {
+                    if (lineHasContent && !lineEndsContinuation && parenDepth == 0) {
+                        return i + 1
+                    }
+                    lineHasContent = false
+                    lineEndsContinuation = false
+                }
+                !ch.isWhitespace() -> mark(ch)
+            }
+            i++
+        }
+        return content.length
+    }
+
     private fun skipStatementEnd(content: String, start: Int): Int {
         var i = start
         var depth = 0
+        var parenDepth = 0
         var inString = false
+        var lineEndsWithContinuation = false
+        var lineHasContent = false
+        fun markContent(ch: Char) {
+            lineHasContent = true
+            lineEndsWithContinuation = ch in "=({,.:+-*/%!<>&|?"
+        }
         while (i < content.length) {
             ensureActive()
             val ch = content[i]
@@ -1322,24 +1402,45 @@ class ComposePreviewParser(
                 continue
             }
             when {
-                ch == '"' -> inString = true
+                ch == '"' -> {
+                    inString = true
+                    markContent(ch)
+                }
                 ch == '/' && i + 1 < content.length && content[i + 1] == '/' -> {
                     val end = content.indexOf('\n', i)
                     i = if (end == -1) content.length else end
+                    continue
                 }
                 ch == '/' && i + 1 < content.length && content[i + 1] == '*' -> {
                     val end = content.indexOf("*/", i + 2)
                     i = if (end == -1) content.length else end + 2
                     continue
                 }
-                ch == '{' -> depth++
+                ch == '{' -> {
+                    depth++
+                    markContent(ch)
+                }
+                ch == '(' -> {
+                    parenDepth++
+                    markContent(ch)
+                }
                 ch == '}' -> {
+                    if (depth <= 0) return i  // do not consume the enclosing brace
                     depth--
-                    if (depth < 0) return i + 1
+                    markContent(ch)
+                }
+                ch == ')' -> {
+                    if (parenDepth > 0) parenDepth--
+                    markContent(ch)
                 }
                 ch == '\n' -> {
-                    if (depth == 0) return i + 1
+                    if (depth == 0 && parenDepth == 0 && lineHasContent && !lineEndsWithContinuation) {
+                        return i + 1
+                    }
+                    lineEndsWithContinuation = false
+                    lineHasContent = false
                 }
+                !ch.isWhitespace() -> markContent(ch)
             }
             i++
         }
