@@ -16,10 +16,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kodereview.app.live.LiveCompiler
 import com.kodereview.app.model.UiNode
 import com.kodereview.app.preview.ComposePreviewRenderer
 import com.kodereview.app.preview.ComposePreviewParser
@@ -72,6 +76,13 @@ fun PreviewPanel(
     var showTree by remember(mergedSource) {
         mutableStateOf(false)
     }
+    var liveRequested by remember(mergedSource) {
+        mutableStateOf(false)
+    }
+    var liveState by remember(mergedSource) {
+        mutableStateOf<LiveState>(LiveState.Idle)
+    }
+    val context = LocalContext.current
     var themeColors by remember(mergedSource) {
         mutableStateOf<Map<String, String>>(emptyMap())
     }
@@ -159,6 +170,21 @@ fun PreviewPanel(
         }
     }
 
+    // Live (compiled) preview: compiles the source with the real Kotlin +
+    // Compose compiler and runs it with the real Compose runtime.
+    LaunchedEffect(mergedSource, liveRequested) {
+        if (!liveRequested || mergedSource.isBlank()) return@LaunchedEffect
+        liveState = LiveState.Compiling
+        val target = (previewResult as? PreviewResult.Success)?.name
+        liveState = when (val result = LiveCompiler.compile(context, sourceCode, extraSources, target)) {
+            is LiveCompiler.Result.Ready -> {
+                @Suppress("UNCHECKED_CAST")
+                LiveState.Ready(result.composableName, result.invoke as @Composable () -> Unit)
+            }
+            is LiveCompiler.Result.Failed -> LiveState.Failed(result.message)
+        }
+    }
+
     Column(modifier = modifier) {
         // Header bar: title + composable selector + tree toggle. The preview
         // area below it is left clean, full-size and scrollable.
@@ -169,6 +195,8 @@ fun PreviewPanel(
             showTree = showTree,
             onSelectComposable = { index ->
                 selectedIndex = index
+                liveRequested = false
+                liveState = LiveState.Idle
                 val c = composables[index]
                 val nodeCount = countNodes(c.body)
                 previewResult = if (c.body.isEmpty()) {
@@ -182,7 +210,16 @@ fun PreviewPanel(
                     )
                 }
             },
-            onToggleTree = { showTree = !showTree }
+            onToggleTree = { showTree = !showTree },
+            liveState = liveState,
+            onToggleLive = {
+                if (liveRequested) {
+                    liveRequested = false
+                    liveState = LiveState.Idle
+                } else {
+                    liveRequested = true
+                }
+            }
         )
 
         Box(
@@ -225,23 +262,86 @@ fun PreviewPanel(
                     }
                 }
                 is PreviewResult.Success -> {
-                    val baseScheme = MaterialTheme.colorScheme
-                    val previewScheme = remember(themeColors, baseScheme) {
-                        buildPreviewColorScheme(themeColors, baseScheme)
-                    }
-                    if (showTree) {
-                        Text(
-                            treeDump(result.nodes),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = OnSurfaceVariant,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(8.dp)
-                        )
-                    } else {
-                        RenderPreviewTree(result.nodes, themeColors, previewScheme)
+                    val st = liveState
+                    when (st) {
+                        is LiveState.Idle -> {
+                            val baseScheme = MaterialTheme.colorScheme
+                            val previewScheme = remember(themeColors, baseScheme) {
+                                buildPreviewColorScheme(themeColors, baseScheme)
+                            }
+                            if (showTree) {
+                                Text(
+                                    treeDump(result.nodes),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = OnSurfaceVariant,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(8.dp)
+                                )
+                            } else {
+                                RenderPreviewTree(result.nodes, themeColors, previewScheme)
+                            }
+                        }
+                        is LiveState.Compiling -> {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text("⚡", color = PrimaryColor, fontSize = 22.sp)
+                                Spacer(Modifier.height(8.dp))
+                                Text("Compiling with Kotlin compiler…", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                        is LiveState.Failed -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(12.dp)
+                            ) {
+                                Text("Live compile failed", color = ErrorColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    st.message,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = OnSurfaceVariant,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(onClick = {
+                                    liveRequested = false
+                                    liveState = LiveState.Idle
+                                }) {
+                                    Text("Kembali ke preview statis", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                        is LiveState.Ready -> {
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(PrimaryColor.copy(alpha = 0.12f))
+                                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("⚡ LIVE — ${st.name}()", style = MaterialTheme.typography.labelSmall, color = PrimaryColor, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.weight(1f))
+                                    Text("kode di-compile & dijalankan asli", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                                }
+                                AndroidView(
+                                    factory = { ctx ->
+                                        ComposeView(ctx).apply {
+                                            setContent(st.content)
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -412,7 +512,9 @@ private fun PreviewHeader(
     selectedIndex: Int,
     showTree: Boolean,
     onSelectComposable: (Int) -> Unit,
-    onToggleTree: () -> Unit
+    onToggleTree: () -> Unit,
+    liveState: LiveState,
+    onToggleLive: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -495,8 +597,32 @@ private fun PreviewHeader(
                     color = PrimaryColor
                 )
             }
+            TextButton(
+                onClick = onToggleLive,
+                enabled = liveState !is LiveState.Compiling,
+                contentPadding = PaddingValues(horizontal = 6.dp)
+            ) {
+                Text(
+                    when (liveState) {
+                        is LiveState.Idle -> "\u26a1 Live"
+                        is LiveState.Compiling -> "\u23f3 Compiling"
+                        is LiveState.Ready -> "\u2715 Static"
+                        is LiveState.Failed -> "\u26a1 Live"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (liveState is LiveState.Ready) ErrorColor else PrimaryColor,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
+}
+
+private sealed interface LiveState {
+    object Idle : LiveState
+    object Compiling : LiveState
+    data class Ready(val name: String, val content: @Composable () -> Unit) : LiveState
+    data class Failed(val message: String) : LiveState
 }
 
 private sealed class PreviewResult {
