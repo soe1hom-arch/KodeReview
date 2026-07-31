@@ -112,7 +112,9 @@ val prepareLivePreviewAssets by tasks.registering {
         if (tmp.exists()) tmp.deleteRecursively()
         tmp.mkdirs()
         val sources = mutableListOf<File>()
-        sources += configurations.getByName("runtimeClasspath").files.filter { it.isFile }
+        val appRuntimeClasspath = configurations.findByName("runtimeClasspath")
+            ?: configurations.getByName("debugRuntimeClasspath")
+        sources += appRuntimeClasspath.files.filter { it.isFile }
         sources += File(project.layout.buildDirectory.get().asFile, "tmp/kotlin-classes/debug")
         sources += File(project.layout.buildDirectory.get().asFile, "intermediates/javac/debug/classes")
 
