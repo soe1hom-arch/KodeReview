@@ -524,7 +524,7 @@ object ComposePreviewRenderer {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            HorizontalDivider()
+            Divider(color = MaterialTheme.colorScheme.outline, thickness = 1.dp)
             Spacer(Modifier.height(8.dp))
             // Main content
             node.content?.let { RenderNode(it) }

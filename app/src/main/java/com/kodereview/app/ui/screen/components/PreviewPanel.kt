@@ -259,48 +259,44 @@ fun PreviewPanel(
  */
 @Composable
 private fun RenderPreviewTree(nodes: List<UiNode>, name: String) {
-    var renderError by remember(nodes, name) { mutableStateOf<String?>(null) }
+    var showTree by remember(nodes, name) { mutableStateOf(false) }
 
-    val fallback: @Composable () -> Unit = {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-            Text(
-                "Render failed — showing node tree instead:",
-                style = MaterialTheme.typography.labelSmall,
-                color = ErrorColor,
-                fontFamily = FontFamily.Monospace
-            )
-            Spacer(Modifier.height(4.dp))
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = { showTree = !showTree }) {
+                Text(
+                    if (showTree) "◉ Render" else "☰ Tree",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PrimaryColor
+                )
+            }
+        }
+        if (showTree) {
             Text(
                 treeDump(nodes),
                 style = MaterialTheme.typography.labelSmall,
                 color = OnSurfaceVariant,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
             )
-        }
-    }
-
-    if (renderError != null) {
-        fallback()
-        return
-    }
-
-    try {
-        MaterialTheme(colorScheme = MaterialTheme.colorScheme) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .border(1.dp, SurfaceVariant, RoundedCornerShape(8.dp)),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Box(modifier = Modifier.padding(2.dp), contentAlignment = Alignment.TopStart) {
-                    ComposePreviewRenderer.Render(nodes)
+        } else {
+            MaterialTheme(colorScheme = MaterialTheme.colorScheme) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(1.dp, SurfaceVariant, RoundedCornerShape(8.dp)),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Box(modifier = Modifier.padding(2.dp), contentAlignment = Alignment.TopStart) {
+                        ComposePreviewRenderer.Render(nodes)
+                    }
                 }
             }
         }
-    } catch (t: Throwable) {
-        android.util.Log.e("PreviewPanel", "Render error", t)
-        renderError = t.message ?: t::class.simpleName
     }
 }
 
