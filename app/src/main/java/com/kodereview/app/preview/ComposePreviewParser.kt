@@ -290,9 +290,21 @@ class ComposePreviewParser(
                 continue
             }
 
-            // Control flow: if / when / for / while / try
+            // Control flow: when / if are parsed for preview; for / while / try are skipped
             if (isControlFlowStart(content, p)) {
-                p = skipControlFlowBlock(content, p)
+                when (controlFlowKind(content, p)) {
+                    "when" -> {
+                        val (cfNodes, newP) = parseWhenBlock(content, p, offset)
+                        cfNodes.forEach { nodes.add(it) }
+                        p = newP
+                    }
+                    "if" -> {
+                        val (cfNodes, newP) = parseIfBlock(content, p, offset)
+                        cfNodes.forEach { nodes.add(it) }
+                        p = newP
+                    }
+                    else -> p = skipControlFlowBlock(content, p)
+                }
                 continue
             }
 
@@ -351,6 +363,208 @@ class ComposePreviewParser(
      * Skip a control flow block (if/when/for/while/try).
      * Returns the new position after the block.
      */
+
+    /**
+     * Identify which control flow construct starts at position p.
+     */
+    private fun controlFlowKind(content: String, p: Int): String {
+        return when {
+            content.regionMatches(p, "when", 0, 4) &&
+                (p + 4 >= content.length || !content[p + 4].isLetterOrDigit()) -> "when"
+            content.regionMatches(p, "if", 0, 2) &&
+                (p + 2 >= content.length || !content[p + 2].isLetterOrDigit()) -> "if"
+            else -> "other"
+        }
+    }
+
+    /**
+     * Parse a `when` block for preview by selecting a representative branch.
+     * Prefers the first string-literal branch, then `else`, then the first
+     * branch that produces UI nodes.
+     */
+    private fun parseWhenBlock(content: String, p: Int, offset: Int): Pair<List<UiNode>, Int> {
+        var i = p + 4
+        i = skipWhitespaceAndComments(content, i)
+        if (i < content.length && content[i] == '(') {
+            val close = findMatchingParen(content, i)
+            if (close == -1) return Pair(emptyList(), content.length)
+            i = close + 1
+            i = skipWhitespaceAndComments(content, i)
+        }
+        if (i >= content.length || content[i] != '{') {
+            return Pair(emptyList(), content.length)
+        }
+        val openBrace = i
+        val closeBrace = findMatchingBrace(content, openBrace)
+        if (closeBrace == -1) return Pair(emptyList(), content.length)
+        val body = content.substring(openBrace + 1, closeBrace)
+
+        val branches = mutableListOf<Pair<String, List<UiNode>>>()
+        var b = 0
+        while (b < body.length) {
+            ensureActive()
+            b = skipWhitespaceAndComments(body, b)
+            if (b >= body.length) break
+            val arrowIdx = findTopLevelArrow(body, b)
+            if (arrowIdx == -1) break
+            val label = body.substring(b, arrowIdx).trim()
+            var rhs = arrowIdx + 2
+            rhs = skipWhitespaceAndComments(body, rhs)
+            if (rhs >= body.length) break
+            if (body[rhs] == '{') {
+                val blockEnd = findMatchingBrace(body, rhs)
+                if (blockEnd == -1) break
+                val inner = body.substring(rhs + 1, blockEnd)
+                branches.add(label to parseBody(inner, offset))
+                b = blockEnd + 1
+            } else {
+                val end = findBranchExprEnd(body, rhs)
+                branches.add(label to parseBody(body.substring(rhs, end), offset))
+                b = end
+            }
+        }
+
+        return Pair(selectWhenBranch(branches), closeBrace + 1)
+    }
+
+    /**
+     * Find the `->` of the next `when` branch, ignoring arrows inside
+     * parens, braces, or strings.
+     */
+    private fun findTopLevelArrow(content: String, start: Int): Int {
+        var i = start
+        var depth = 0
+        while (i < content.length - 1) {
+            ensureActive()
+            when {
+                content[i] == '"' -> {
+                    val end = findStringEnd(content, i)
+                    i = if (end != -1) end else i + 1
+                }
+                content[i] == '(' -> depth++
+                content[i] == ')' -> depth--
+                content[i] == '{' -> {
+                    val end = findMatchingBrace(content, i)
+                    i = if (end != -1) end + 1 else i + 1
+                }
+                depth == 0 && content[i] == '-' && content[i + 1] == '>' -> return i
+                else -> i++
+            }
+        }
+        return -1
+    }
+
+    /**
+     * Find the end of a single-expression `when` branch body.
+     */
+    private fun findBranchExprEnd(content: String, start: Int): Int {
+        var i = start
+        var depth = 0
+        while (i < content.length) {
+            ensureActive()
+            when (content[i]) {
+                '"' -> {
+                    val end = findStringEnd(content, i)
+                    i = if (end != -1) end else i + 1
+                }
+                '(' -> { depth++; i++ }
+                ')' -> { depth--; i++ }
+                '{' -> {
+                    val end = findMatchingBrace(content, i)
+                    i = if (end != -1) end + 1 else i + 1
+                }
+                '\n' -> { if (depth <= 0) return i; i++ }
+                else -> i++
+            }
+        }
+        return content.length
+    }
+
+    /**
+     * Choose which `when` branch to render for the preview.
+     */
+    private fun selectWhenBranch(branches: List<Pair<String, List<UiNode>>>): List<UiNode> {
+        if (branches.isEmpty()) return emptyList()
+        branches.firstOrNull { it.first.startsWith("\"") }?.let { return it.second }
+        branches.firstOrNull { it.first == "else" }?.let { return it.second }
+        branches.firstOrNull { it.second.isNotEmpty() }?.let { return it.second }
+        return branches.maxByOrNull { it.second.size }?.second ?: emptyList()
+    }
+
+    /**
+     * Parse an `if` block for preview by rendering its "then" branch.
+     * Branches that only contain dialogs are skipped to avoid modal overlays.
+     */
+    private fun parseIfBlock(content: String, p: Int, offset: Int): Pair<List<UiNode>, Int> {
+        var i = p + 2
+        i = skipWhitespaceAndComments(content, i)
+        if (i < content.length && content[i] == '(') {
+            val close = findMatchingParen(content, i)
+            if (close == -1) return Pair(emptyList(), content.length)
+            i = close + 1
+        }
+        i = skipWhitespaceAndComments(content, i)
+        if (i >= content.length || content[i] != '{') {
+            // Single-line if without a brace block: skip it entirely
+            return Pair(emptyList(), skipControlFlowBlock(content, p))
+        }
+        val blockEnd = findMatchingBrace(content, i)
+        if (blockEnd == -1) return Pair(emptyList(), content.length)
+        val inner = content.substring(i + 1, blockEnd)
+        val nodes = parseBody(inner, offset)
+
+        // Skip an optional else / else-if chain
+        var after = blockEnd + 1
+        after = skipWhitespaceAndComments(content, after)
+        if (after + 4 <= content.length &&
+            content.regionMatches(after, "else", 0, 4) &&
+            (after + 4 >= content.length || !content[after + 4].isLetterOrDigit())
+        ) {
+            var j = after + 4
+            j = skipWhitespaceAndComments(content, j)
+            if (j < content.length && content[j] == '{') {
+                val elseEnd = findMatchingBrace(content, j)
+                if (elseEnd != -1) after = elseEnd + 1
+            } else {
+                after = skipControlFlowBlock(content, p)
+            }
+        }
+
+        val filtered = if (containsDialog(nodes)) emptyList() else nodes
+        return Pair(filtered, after)
+    }
+
+    /**
+     * Check whether a node subtree contains any dialog composable.
+     */
+    private fun containsDialog(nodes: List<UiNode>): Boolean {
+        for (node in nodes) {
+            when (node) {
+                is UiNode.Dialog -> return true
+                is UiNode.Column -> if (containsDialog(node.children)) return true
+                is UiNode.Row -> if (containsDialog(node.children)) return true
+                is UiNode.Box -> if (containsDialog(node.children)) return true
+                is UiNode.Surface -> if (containsDialog(node.children)) return true
+                is UiNode.Card -> if (containsDialog(node.children)) return true
+                is UiNode.Unknown -> if (containsDialog(node.children)) return true
+                is UiNode.LazyColumn -> if (containsDialog(node.items)) return true
+                is UiNode.LazyRow -> if (containsDialog(node.items)) return true
+                is UiNode.ModalDrawerSheet -> if (containsDialog(node.children)) return true
+                is UiNode.NavigationBar -> if (containsDialog(node.children)) return true
+                is UiNode.Scaffold -> {
+                    if (node.content != null && containsDialog(listOf(node.content))) return true
+                    if (node.topBar != null && containsDialog(listOf(node.topBar))) return true
+                    if (node.bottomBar != null && containsDialog(listOf(node.bottomBar))) return true
+                }
+                is UiNode.ModalNavigationDrawer -> {
+                    if (node.content != null && containsDialog(listOf(node.content))) return true
+                    if (node.drawerContent != null && containsDialog(listOf(node.drawerContent))) return true
+                }
+                else -> {}
+            }
+        }
+        return false
+    }
     private fun skipControlFlowBlock(content: String, p: Int): Int {
         var i = p
         // Skip to the first '{' that starts the block body
@@ -667,6 +881,12 @@ class ComposePreviewParser(
                 val end = findMatchingParen(content, p)
                 if (end != -1) Pair(content.substring(p, end + 1), end + 1)
                 else Pair(content.substring(p), content.length)
+            }
+            // if-expression argument: text = if (cond) "A" else "B"
+            ch == 'i' && content.regionMatches(p, "if", 0, 2) &&
+                (p + 2 >= content.length || !content[p + 2].isLetterOrDigit()) -> {
+                val end = findArgumentExprEnd(content, p)
+                Pair(content.substring(p, end), end)
             }
             // Number or expression
             else -> {
@@ -1189,6 +1409,39 @@ class ComposePreviewParser(
         return i
     }
 
+    /**
+     * Find the end of a top-level expression argument such as
+     * `if (cond) "A" else "B"`, stopping at a top-level comma or closing paren.
+     * String-aware so nested templates/quotes are handled.
+     */
+    private fun findArgumentExprEnd(content: String, start: Int): Int {
+        var i = start
+        var depth = 0
+        var inString = false
+        while (i < content.length) {
+            ensureActive()
+            val ch = content[i]
+            if (inString) {
+                if (ch == '\\') { i += 2; continue }
+                if (ch == '"') inString = false
+                i++
+                continue
+            }
+            when (ch) {
+                '"' -> inString = true
+                '(' -> depth++
+                ')' -> { if (depth == 0) return i; depth-- }
+                '{' -> {
+                    val end = findMatchingBrace(content, i)
+                    if (end != -1) i = end
+                }
+                ',' -> { if (depth == 0) return i }
+            }
+            i++
+        }
+        return content.length
+    }
+
     private fun skipToChar(content: String, start: Int, vararg chars: Char): Int {
         var i = start
         while (i < content.length) {
@@ -1275,8 +1528,30 @@ class ComposePreviewParser(
                 trimmed.substring(1, trimmed.length - 1)
             trimmed.startsWith("'") && trimmed.endsWith("'") ->
                 trimmed.substring(1, trimmed.length - 1)
+            trimmed.startsWith("if") && (trimmed.length == 2 || !trimmed[2].isLetterOrDigit()) ->
+                extractFirstStringLiteral(trimmed)
             else -> trimmed
         }
+    }
+
+    /**
+     * Extract the content of the first string literal inside an expression
+     * like `if (cond) "A" else "B"`. Returns null when none found.
+     */
+    private fun extractFirstStringLiteral(value: String): String? {
+        var i = 0
+        while (i < value.length) {
+            ensureActive()
+            if (value[i] == '"') {
+                val end = findStringEnd(value, i)
+                if (end != -1 && end > i + 1) {
+                    return value.substring(i + 1, end - 1)
+                }
+                return null
+            }
+            i++
+        }
+        return null
     }
 
     private fun extractTextFromNodeList(children: List<UiNode>): String {
