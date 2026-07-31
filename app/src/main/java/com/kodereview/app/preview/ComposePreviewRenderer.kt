@@ -110,7 +110,22 @@ object ComposePreviewRenderer {
             verticalArrangement = verticalArrangement,
             horizontalAlignment = horizontalAlignment
         ) {
-            node.children.forEach { RenderNode(it) }
+            node.children.forEach { child ->
+                val weight = child.modifier.entries
+                    .filterIsInstance<ModifierEntry.Weight>()
+                    .firstOrNull()?.weight?.value
+                if (weight != null) {
+                    Box(
+                        modifier = Modifier
+                            .weight(weight)
+                            .fillMaxWidth()
+                    ) {
+                        RenderNode(child)
+                    }
+                } else {
+                    RenderNode(child)
+                }
+            }
         }
     }
 
@@ -139,7 +154,22 @@ object ComposePreviewRenderer {
             horizontalArrangement = horizontalArrangement,
             verticalAlignment = verticalAlignment
         ) {
-            node.children.forEach { RenderNode(it) }
+            node.children.forEach { child ->
+                val weight = child.modifier.entries
+                    .filterIsInstance<ModifierEntry.Weight>()
+                    .firstOrNull()?.weight?.value
+                if (weight != null) {
+                    Box(
+                        modifier = Modifier
+                            .weight(weight)
+                            .fillMaxHeight()
+                    ) {
+                        RenderNode(child)
+                    }
+                } else {
+                    RenderNode(child)
+                }
+            }
         }
     }
 
@@ -373,18 +403,24 @@ object ComposePreviewRenderer {
 
     @Composable
     private fun RenderScaffold(node: UiNode.Scaffold) {
-        androidx.compose.material3.Scaffold(
-            modifier = buildModifier(node.modifier).fillMaxWidth(),
-            topBar = {
-                node.topBar?.let { RenderNode(it) }
-            },
-            bottomBar = {
-                node.bottomBar?.let { RenderNode(it) }
-            }
+        // A real Scaffold needs a *bounded* height to lay out topBar/content/
+        // bottomBar. Replicate that with a plain Column instead of material3
+        // Scaffold, so the preview viewport behaves like a phone screen:
+        // topBar on top, content filling the rest, bottomBar pinned at bottom.
+        Column(
+            modifier = buildModifier(node.modifier)
+                .fillMaxWidth()
+                .fillMaxHeight()
         ) {
-            Box(modifier = Modifier.padding(it)) {
+            node.topBar?.let { RenderNode(it) }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
                 node.content?.let { RenderNode(it) }
             }
+            node.bottomBar?.let { RenderNode(it) }
         }
     }
 
@@ -663,8 +699,8 @@ object ComposePreviewRenderer {
         for (entry in modifier.entries) {
             m = when (entry) {
                 is ModifierEntry.FillMaxWidth -> m.fillMaxWidth()
-                is ModifierEntry.FillMaxHeight -> m
-                is ModifierEntry.FillMaxSize -> m.fillMaxWidth()
+                is ModifierEntry.FillMaxHeight -> m.fillMaxHeight()
+                is ModifierEntry.FillMaxSize -> m.fillMaxSize()
                 is ModifierEntry.Width -> m.width(parseNumberToDp(entry.value))
                 is ModifierEntry.Height -> m.height(parseNumberToDp(entry.value))
                 is ModifierEntry.Size -> {

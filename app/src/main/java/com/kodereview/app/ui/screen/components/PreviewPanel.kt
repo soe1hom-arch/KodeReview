@@ -7,7 +7,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
@@ -216,7 +215,6 @@ fun PreviewPanel(
                 .fillMaxWidth()
                 .weight(1f)
                 .background(EditorBackground)
-                .verticalScroll(rememberScrollState())
                 .padding(4.dp)
         ) {
             when (val result = previewResult) {
