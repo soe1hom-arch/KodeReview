@@ -33,19 +33,17 @@ object ComposePreviewRenderer {
 
     @Composable
     fun Render(nodes: List<UiNode>, colors: Map<String, String> = emptyMap()): Unit {
+        // Preview panel is single-instance, so setting the registry before
+        // composition is safe; it is only read during this render pass.
         activeColors = colors
-        try {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp)
-            ) {
-                nodes.forEach { node ->
-                    RenderNode(node)
-                }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+        ) {
+            nodes.forEach { node ->
+                RenderNode(node)
             }
-        } finally {
-            activeColors = emptyMap()
         }
     }
 
