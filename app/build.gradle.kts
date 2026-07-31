@@ -41,8 +41,7 @@ android {
 
     packaging {
         resources {
-            pickFirsts += "/kotlin/internal/internal.kotlin_builtins"
-            pickFirsts += "/kotlin/kotlin.kotlin_builtins"
+            pickFirsts += "**/*.kotlin_builtins"
             pickFirsts += "kotlin-trove4j.properties"
             pickFirsts += "/META-INF/versions/9/previous-compilation-data.bin"
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
