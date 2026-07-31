@@ -69,7 +69,9 @@ fun PreviewPanel(
                     val isActiveCheck = { ctx[kotlinx.coroutines.Job]?.isActive != false }
                     val parser = ComposePreviewParser(sourceCode, isActiveCheck, PARSE_TIMEOUT_MS)
                     val allComposables = parser.parseAll()
-                    Pair(allComposables, parser.parseForPreview())
+                    val preview = allComposables.firstOrNull { it.hasPreviewAnnotation }
+                        ?: allComposables.firstOrNull()
+                    Pair(allComposables, preview)
                 }
             }
 

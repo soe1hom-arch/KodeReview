@@ -73,6 +73,7 @@ object ComposePreviewRenderer {
             is UiNode.ModalDrawerSheet -> RenderModalDrawerSheetCompat(node)
             is UiNode.FloatingActionButton -> RenderFloatingActionButtonView(node)
             is UiNode.Unknown -> RenderUnknown(node)
+            is UiNode.Noop -> Unit
         }
     }
 
@@ -562,6 +563,11 @@ object ComposePreviewRenderer {
 
     @Composable
     private fun RenderUnknown(node: UiNode.Unknown) {
+        // Inlined custom composable — render its real children.
+        if (node.children.isNotEmpty()) {
+            node.children.forEach { RenderNode(it) }
+            return
+        }
         Column(modifier = buildModifier(node.modifier)) {
             Text(
                 text = "<${node.name} />",

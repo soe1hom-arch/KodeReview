@@ -16,6 +16,14 @@ class ComposePreviewParser(
 ) {
     private var parseIterations = 0
     private val deadlineNanos: Long = if (timeoutMs > 0) System.nanoTime() + timeoutMs * 1_000_000 else 0L
+
+    /** Custom composables found in this source, keyed by lowercased name. */
+    private var customComposables: Map<String, ParsedComposable> = emptyMap()
+
+    /** Current custom-composable inlining depth (prevents infinite recursion). */
+    private var inlineDepth = 0
+
+    private val MAX_INLINE_DEPTH = 8
     
     /** Check cancellation and iteration limits. Throws CancellationException if cancelled. */
     private fun ensureActive() {
@@ -56,7 +64,36 @@ class ComposePreviewParser(
         "HorizontalDivider", "VerticalDivider"
     )
 
+    /**
+     * Non-UI calls that should be skipped entirely (no node rendered).
+     */
+    private val NON_UI_CALLS = setOf(
+        "launchedeffect", "disposableeffect", "sideeffect",
+        "remember", "remembercoroutinescope", "rememberdrawerstate",
+        "rememberscrollstate", "rememberlazyliststate", "rememberlazycolumnstate",
+        "rememberlazylistitemsstate", "remembersaveable", "derivedstateof",
+        "remembermutablestateof", "mutableintstateof", "mutablelongstateof",
+        "mutablefloatstateof", "mutabledoublestateof", "mutablebooleanstateof",
+        "producestate", "snapshotflow", "animationstateof", "rememberanimatable",
+        "rememberinfiniteTransition", "collectasstate", "collectasstatewithlifecycle",
+        "collect", "launch", "delay", "updatestate", "rememberupdatedstate"
+    )
+
     fun parseAll(): List<ParsedComposable> {
+        // Pass 1: parse without inlining to discover all custom composables.
+        val firstPass = parseAllRaw()
+        if (firstPass.isEmpty()) return firstPass
+
+        customComposables = firstPass.associateBy { it.name.lowercase() }
+        try {
+            // Pass 2: re-parse with custom composables available for inlining.
+            return parseAllRaw()
+        } finally {
+            customComposables = emptyMap()
+        }
+    }
+
+    private fun parseAllRaw(): List<ParsedComposable> {
         val composables = mutableListOf<ParsedComposable>()
         var searchPos = 0
 
@@ -430,6 +467,22 @@ class ComposePreviewParser(
             }
         }
 
+        // Skip known non-UI calls entirely (LaunchedEffect, remember, etc.)
+        if (name.lowercase() in NON_UI_CALLS) {
+            return Pair(UiNode.Noop, pos)
+        }
+
+        // Inline custom composables defined in this source file.
+        if (name.lowercase() in customComposables) {
+            val custom = customComposables[name.lowercase()] ?: return Pair(UiNode.Noop, pos)
+            val mergedArgs = LinkedHashMap(namedArgs)
+            if (contentBody != null && !mergedArgs.containsKey("content")) {
+                mergedArgs["content"] = "{ $contentBody }"
+            }
+            val node = inlineCustomComposable(custom, mergedArgs)
+            return Pair(node, pos)
+        }
+
         // If it's a known composable, build the node
         if (name in KNOWN_COMPOSABLES || name[0].isUpperCase()) {
             val node = buildUiNode(name, namedArgs, contentBody, offset)
@@ -438,6 +491,104 @@ class ComposePreviewParser(
 
         // Unknown function, skip it
         return null
+    }
+
+    /**
+     * Inline a custom composable's body, substituting its parameters with the
+     * call-site argument values.
+     */
+    private fun inlineCustomComposable(
+        custom: ParsedComposable,
+        args: Map<String, String>
+    ): UiNode {
+        if (inlineDepth >= MAX_INLINE_DEPTH) {
+            return UiNode.Unknown(name = custom.name, error = "Max inline depth")
+        }
+
+        val customStart = custom.bodyStart
+        val customEnd = custom.bodyEnd
+        if (customStart + 1 >= customEnd) {
+            return UiNode.Unknown(name = custom.name, error = "Empty body")
+        }
+
+        val bodyText = source.substring(customStart + 1, customEnd - 1)
+        val substituted = substituteParams(bodyText, custom.parameters, args)
+
+        inlineDepth++
+        try {
+            val nodes = parseBody(substituted, 0)
+            return if (nodes.isEmpty()) {
+                UiNode.Unknown(name = custom.name, error = "Empty body")
+            } else {
+                UiNode.Unknown(name = custom.name, children = nodes)
+            }
+        } finally {
+            inlineDepth--
+        }
+    }
+
+    /**
+     * Substitute composable parameter names with call-site argument values.
+     * Uses temporary placeholders to avoid cascading replacement.
+     */
+    private fun substituteParams(
+        bodyText: String,
+        params: List<String>,
+        args: Map<String, String>
+    ): String {
+        val paramValues = LinkedHashMap<String, String>()
+        var positional = 0
+        for (param in params) {
+            val name = extractParamName(param)
+            if (name != null) {
+                val value = args[name] ?: args["__pos$positional"]
+                if (value != null) {
+                    paramValues[name] = value
+                }
+                positional++
+            }
+        }
+        if (paramValues.isEmpty()) return bodyText
+
+        var result = bodyText
+        val placeholders = mutableListOf<Pair<String, String>>()
+        var idx = 0
+        for ((name, value) in paramValues) {
+            val ph = "\u0001${idx++}\u0002"
+            placeholders.add(ph to value)
+            result = result.replace(Regex("\\b" + Regex.escape(name) + "\\b"), ph)
+        }
+        for ((ph, value) in placeholders) {
+            result = result.replace(ph, value)
+        }
+        return result
+    }
+
+    /**
+     * Extract the bare parameter name from a Kotlin parameter declaration
+     * like `label: String`, `selected: Boolean = false`, or `@Composable content: () -> Unit`.
+     */
+    private fun extractParamName(param: String): String? {
+        var p = param.trim()
+        if (p.startsWith("val ") || p.startsWith("var ")) p = p.substringAfter(" ").trim()
+        // Strip annotations like @Composable
+        while (p.startsWith("@")) {
+            val space = p.indexOf(' ')
+            if (space == -1) return null
+            p = p.substring(space + 1).trim()
+        }
+        val colon = p.indexOf(':')
+        val eq = p.indexOf('=')
+        val end = when {
+            colon >= 0 && eq >= 0 -> minOf(colon, eq)
+            colon >= 0 -> colon
+            eq >= 0 -> eq
+            else -> p.length
+        }
+        val name = p.substring(0, end).trim()
+        if (name.isEmpty() || !name.all { it.isLetterOrDigit() || it == '_' }) return null
+        if (name[0].isDigit()) return null
+        return name
     }
 
     /**
@@ -596,7 +747,7 @@ class ComposePreviewParser(
             )
             "Icon" -> UiNode.Icon(
                 modifier = modifier,
-                name = args["imageVector"] ?: args["painter"] ?: args["bitmap"],
+                name = args["imageVector"] ?: args["painter"] ?: args["bitmap"] ?: args["__pos0"],
                 tint = args["tint"]
             )
             "Image" -> UiNode.Image(

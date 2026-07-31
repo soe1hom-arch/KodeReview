@@ -188,4 +188,9 @@ sealed class UiNode {
         val error: String? = null,
         val children: List<UiNode> = emptyList()
     ) : UiNode()
+
+    // Internal no-op node for non-UI calls (remember, LaunchedEffect, etc.)
+    object Noop : UiNode() {
+        override val modifier: ModifierModel = ModifierModel()
+    }
 }
