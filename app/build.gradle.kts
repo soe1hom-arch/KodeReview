@@ -117,12 +117,36 @@ val prepareLivePreviewAssets by tasks.registering {
         // 3) compile-classpath.jar: every .class from the app runtime classpath
         // plus the app's own compiled classes.
         val cpJar = File(liveDir, "compile-classpath.jar")
+        val appRuntimeClasspath = configurations.findByName("runtimeClasspath")
+            ?: configurations.getByName("debugRuntimeClasspath")
+        // 4) kotlin-home for the on-device compiler. The compiler resolves its
+        // own jars via resource lookup (PathUtil), which does not work on
+        // Android (classes live in dex). Pointing -kotlin-home at a folder of
+        // real jars sidesteps that entirely.
+        val kotlinHomeLib = File(File(liveDir, "kotlin-home"), "lib")
+        kotlinHomeLib.mkdirs()
+        val runtimeFiles = appRuntimeClasspath.files
+        fun copyJarInto(pattern: Regex, target: String) {
+            val src = runtimeFiles.firstOrNull { pattern.containsMatchIn(it.name) }
+            if (src != null && src.isFile) {
+                val dst = File(kotlinHomeLib, target)
+                if (!dst.exists() || dst.length() != src.length()) {
+                    src.copyTo(dst, overwrite = true)
+                }
+            } else {
+                logger.warn("Live preview: could not find $pattern in runtime classpath")
+            }
+        }
+        copyJarInto(Regex("kotlin-compiler-embeddable-1\\.9\\.20\\.jar"), "kotlin-compiler.jar")
+        copyJarInto(Regex("kotlin-stdlib-1\\.9\\.20\\.jar"), "kotlin-stdlib.jar")
+        copyJarInto(Regex("kotlin-reflect-1\\.9\\.20\\.jar"), "kotlin-reflect.jar")
+        copyJarInto(Regex("kotlin-script-runtime-1\\.9\\.20\\.jar"), "kotlin-script-runtime.jar")
+        copyJarInto(Regex("trove4j-.*\\.jar"), "trove4j.jar")
+
         val tmp = File(liveDir, "cp.tmp")
         if (tmp.exists()) tmp.deleteRecursively()
         tmp.mkdirs()
         val sources = mutableListOf<File>()
-        val appRuntimeClasspath = configurations.findByName("runtimeClasspath")
-            ?: configurations.getByName("debugRuntimeClasspath")
         sources += appRuntimeClasspath.files.filter { it.isFile }
         sources += File(project.layout.buildDirectory.get().asFile, "tmp/kotlin-classes/debug")
         sources += File(project.layout.buildDirectory.get().asFile, "intermediates/javac/debug/classes")

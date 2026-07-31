@@ -51,7 +51,8 @@ object LiveCompiler {
         val composePlugin: File,
         val androidJar: File,
         val compileClasspath: File,
-        val fakeJdk: File
+        val fakeJdk: File,
+        val kotlinHome: File
     )
 
     suspend fun compile(
@@ -76,6 +77,11 @@ object LiveCompiler {
                 "-Xplugin=${files.composePlugin.absolutePath}",
                 "-P", COMPOSE_PLUGIN_OPT,
                 "-jvm-target", "1.8",
+                // Real compiler jars: on Android PathUtil's resource lookup
+                // (used to locate the compiler jar) cannot work because the
+                // classes live in dex. -kotlin-home points at copied jars and
+                // short-circuits that lookup entirely.
+                "-kotlin-home", files.kotlinHome.absolutePath,
                 "-jdk-home", files.fakeJdk.absolutePath,
                 "-nowarn"
             ) + (srcDir.listFiles()?.map { it.absolutePath } ?: emptyList())
@@ -146,6 +152,17 @@ object LiveCompiler {
         copyAssetIfNeeded(context, "live/android.jar", androidJar)
         copyAssetIfNeeded(context, "live/compile-classpath.jar", compileClasspath)
 
+        // kotlin-home: the on-device compiler needs real jars in lib/ so its
+        // PathUtil-based jar resolution (which fails for dex-packed classes)
+        // can be skipped via -kotlin-home.
+        val kotlinHome = File(workDir, "kotlin-home")
+        val kotlinHomeLib = File(kotlinHome, "lib")
+        copyAssetIfNeeded(context, "live/kotlin-home/lib/kotlin-compiler.jar", File(kotlinHomeLib, "kotlin-compiler.jar"))
+        copyAssetIfNeeded(context, "live/kotlin-home/lib/kotlin-stdlib.jar", File(kotlinHomeLib, "kotlin-stdlib.jar"))
+        copyAssetIfNeeded(context, "live/kotlin-home/lib/kotlin-reflect.jar", File(kotlinHomeLib, "kotlin-reflect.jar"))
+        copyAssetIfNeeded(context, "live/kotlin-home/lib/kotlin-script-runtime.jar", File(kotlinHomeLib, "kotlin-script-runtime.jar"))
+        copyAssetIfNeeded(context, "live/kotlin-home/lib/trove4j.jar", File(kotlinHomeLib, "trove4j.jar"))
+
         // Fake JDK: the on-device compiler needs a JDK-like layout to resolve
         // java.* classes; android.jar doubles as rt.jar (classic trick).
         val fakeJdk = File(workDir, "fakejdk")
@@ -155,11 +172,12 @@ object LiveCompiler {
             androidJar.copyTo(rtJar, overwrite = true)
         }
 
-        return LiveFiles(workDir, composePlugin, androidJar, compileClasspath, fakeJdk)
+        return LiveFiles(workDir, composePlugin, androidJar, compileClasspath, fakeJdk, kotlinHome)
     }
 
     private fun copyAssetIfNeeded(context: Context, assetPath: String, target: File) {
         if (target.exists() && target.length() > 0L) return
+        target.parentFile?.mkdirs()
         context.assets.open(assetPath).use { input ->
             target.outputStream().use { output -> input.copyTo(output) }
         }
